@@ -1,0 +1,16 @@
+Date,Details,Debit,Credit,Section
+2026-01-02,Stripe payout - subscriptions,,1240.00,Revenue
+2026-01-03,AWS hosting,84.50,,Infrastructure
+2026-01-05,Domain renewal,18.00,,Infrastructure
+2026-01-06,Stripe payout - one-time sales,,560.00,Revenue
+2026-01-10,Facebook Ads,200.00,,Marketing
+2026-01-12,Google Workspace,12.00,,Software
+2026-01-15,Stripe payout - subscriptions,,1310.00,Revenue
+2026-01-18,Contractor - design work,450.00,,Contractors
+2026-01-20,Mailchimp,29.00,,Software
+2026-01-22,Stripe payout - one-time sales,,720.00,Revenue
+2026-01-25,Google Ads,180.00,,Marketing
+2026-02-01,Stripe payout - subscriptions,,1395.00,Revenue
+2026-02-03,AWS hosting,91.20,,Infrastructure
+2026-02-08,Contractor - content writing,300.00,,Contractors
+2026-02-15,Stripe payout - subscriptions,,1420.00,Revenue
