@@ -8,7 +8,7 @@ import TxnForm from '../components/TxnForm'
 import CategoryManager from '../components/CategoryManager'
 import RulesManager from '../components/RulesManager'
 import ImportWizard from '../components/ImportWizard'
-import { CategoryChart, MonthlyChart } from '../components/Charts'
+import { CategoryChart, MonthlyByCategoryChart, MonthlyChart } from '../components/Charts'
 import { money } from '../lib/format'
 
 // Starter category list used until the user saves their own.
@@ -288,6 +288,7 @@ export default function BudgetView() {
           {analyticsOpen && (
             <div className="border-t border-slate-100 p-4">
               <div className="grid gap-4">
+                <MonthlyByCategoryChart kpis={kpis} currency={currency} />
                 <MonthlyChart kpis={kpis} currency={currency} />
                 <CategoryChart kpis={kpis} currency={currency} />
               </div>

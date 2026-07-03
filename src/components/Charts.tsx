@@ -2,6 +2,7 @@ import {
   Bar,
   BarChart,
   Cell,
+  LabelList,
   Legend,
   Pie,
   PieChart,
@@ -76,6 +77,50 @@ export function CategoryChart({ kpis, currency }: { kpis: Kpis; currency: string
             wrapperStyle={{ fontSize: 12, lineHeight: '1.4em', maxWidth: '34%' }}
           />
         </PieChart>
+      </ResponsiveContainer>
+    </Panel>
+  )
+}
+
+// Horizontal stacked bars: one bar per month, split into colored category
+// segments (the bar's length = that month's total spending). A separate green
+// bar shows that month's income next to it. Colors match the pie (same category
+// order), so a category is the same color in both charts.
+export function MonthlyByCategoryChart({ kpis, currency }: { kpis: Kpis; currency: string }) {
+  const categories = kpis.byCategory.map((c) => c.category) // sorted biggest first = pie order
+  const data = kpis.byMonthCategory.map((m) => ({
+    label: monthLabel(m.month),
+    income: m.income,
+    total: m.total, // total spending — shown at the end of the stack
+    _end: 0, // invisible cap bar that carries the spending-total label
+    ...m.cats,
+  }))
+  if (data.length === 0) return <Empty>No monthly spending yet</Empty>
+
+  const height = Math.max(320, data.length * 46 + 120)
+  const shortMoney = (v: number) =>
+    v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`
+  const totalFmt = (v: number) => '$' + Math.round(v).toLocaleString()
+
+  return (
+    <Panel title="Monthly spending by category">
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 56, bottom: 0, left: 8 }}>
+          <XAxis type="number" fontSize={11} tickLine={false} tickFormatter={shortMoney} />
+          <YAxis type="category" dataKey="label" width={92} fontSize={11} tickLine={false} axisLine={false} />
+          <Tooltip formatter={(v: number) => money(v, currency)} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {categories.map((c, i) => (
+            <Bar key={c} dataKey={c} stackId="spend" fill={CAT_COLORS[i % CAT_COLORS.length]} />
+          ))}
+          {/* invisible 0-width cap at the end of the spending stack, just to print the total */}
+          <Bar dataKey="_end" stackId="spend" fill="transparent" legendType="none" isAnimationActive={false}>
+            <LabelList dataKey="total" position="right" formatter={totalFmt} fontSize={11} fill="#dc2626" />
+          </Bar>
+          <Bar dataKey="income" name="Income" stackId="income" fill="#16a34a" radius={[0, 3, 3, 0]}>
+            <LabelList dataKey="income" position="right" formatter={totalFmt} fontSize={11} fill="#16a34a" />
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </Panel>
   )

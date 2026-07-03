@@ -68,6 +68,71 @@ export interface Kpis {
   byMonth: { month: string; in: number; out: number; net: number }[]
   byCategory: { category: string; amount: number }[] // spending by category (money out)
   bySection: { section: string; in: number; out: number; net: number }[]
+  // Per-month spending broken down by category (for the stacked monthly chart).
+  byMonthCategory: { month: string; total: number; income: number; cats: Record<string, number> }[]
+}
+
+// --- Budget Planner (separate yearly plan) -------------------------------
+export type PlannerKind = 'fixed' | 'variable' | 'income'
+
+export interface PlannerItem {
+  id: number
+  kind: PlannerKind
+  name: string
+  monthly: number // yearly is derived as monthly * 12
+  note: string | null
+  sort_order: number
+}
+
+// --- Rental properties (landlord accounting) -----------------------------
+export interface FixedCost {
+  category: string
+  amount: number // recurring monthly amount
+}
+
+export interface PropertyConfig {
+  purchasePrice?: number
+  closingCosts?: number
+  rehab?: number
+  downPayment?: number // dollars actually put down
+  loanAmount?: number
+  rate?: number // annual interest %
+  termYears?: number
+  paidOff?: boolean // owned free & clear — no mortgage
+  fixedCosts?: FixedCost[] // recurring monthly expenses, auto-included every month
+}
+
+export interface Property {
+  id: number
+  name: string
+  address: string
+  config: PropertyConfig
+  created_at: string
+}
+
+export type EntryKind = 'income' | 'expense'
+
+export interface PropertyEntry {
+  id: number
+  property_id: number
+  entry_date: string // ISO YYYY-MM-DD
+  kind: EntryKind
+  category: string
+  amount: number // positive; kind gives the sign
+  note: string | null
+  paid: number // 1 = realized/counted, 0 = scheduled-but-unpaid (lease rent)
+  lease_id: number | null // set when this row was generated from a lease
+}
+
+export interface Lease {
+  id: number
+  property_id: number
+  tenant: string
+  start_month: string // 'YYYY-MM'
+  end_month: string // 'YYYY-MM'
+  monthly_rent: number
+  note: string | null
+  created_at: string
 }
 
 export interface TxnFilters {

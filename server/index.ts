@@ -12,7 +12,14 @@ import type {
   BudgetConfig,
   BudgetType,
   ColumnMapping,
+  EntryKind,
   Kpis,
+  Lease,
+  PlannerItem,
+  PlannerKind,
+  Property,
+  PropertyConfig,
+  PropertyEntry,
   Transaction,
   TxnFilters,
 } from '../shared/types.ts'
@@ -101,6 +108,7 @@ function computeKpis(txns: Transaction[]): Kpis {
   const months = new Map<string, { in: number; out: number }>()
   const cats = new Map<string, number>()
   const sections = new Map<string, { in: number; out: number }>()
+  const monthCats = new Map<string, Map<string, number>>() // month -> (category -> spend)
 
   for (const t of txns) {
     if (t.amount >= 0) {
@@ -119,6 +127,9 @@ function computeKpis(txns: Transaction[]): Kpis {
     if (t.amount < 0) {
       const c = t.category || 'Uncategorized'
       cats.set(c, (cats.get(c) ?? 0) + -t.amount)
+      const mc = monthCats.get(month) ?? new Map<string, number>()
+      mc.set(c, (mc.get(c) ?? 0) + -t.amount)
+      monthCats.set(month, mc)
     }
 
     const sec = t.section || 'General'
@@ -146,6 +157,16 @@ function computeKpis(txns: Transaction[]): Kpis {
     bySection: [...sections.entries()]
       .sort((a, b) => b[1].out - a[1].out)
       .map(([section, v]) => ({ section, in: round(v.in), out: round(v.out), net: round(v.in - v.out) })),
+    byMonthCategory: [...months.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([month, v]) => ({
+        month,
+        total: round(v.out),
+        income: round(v.in),
+        cats: Object.fromEntries(
+          [...(monthCats.get(month) ?? new Map<string, number>())].map(([c, a]) => [c, round(a)]),
+        ),
+      })),
   }
 }
 
@@ -420,6 +441,322 @@ app.get('/api/budgets/:id/kpis', (req, res) => {
     .prepare(`SELECT * FROM transactions WHERE ${sql}`)
     .all(...params) as unknown as Transaction[]
   res.json(computeKpis(rows))
+})
+
+// --- Budget Planner -------------------------------------------------------
+app.get('/api/planner', (_req, res) => {
+  const rows = db
+    .prepare('SELECT * FROM planner_items ORDER BY kind, sort_order, id')
+    .all() as unknown as PlannerItem[]
+  res.json(rows)
+})
+
+app.post('/api/planner', (req, res) => {
+  const { kind, name, monthly, note } = req.body as {
+    kind?: PlannerKind
+    name?: string
+    monthly?: number
+    note?: string | null
+  }
+  if (kind !== 'fixed' && kind !== 'variable' && kind !== 'income') {
+    return res.status(400).json({ error: 'kind must be fixed, variable, or income' })
+  }
+  const max = db
+    .prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM planner_items WHERE kind = ?')
+    .get(kind) as { m: number }
+  const info = db
+    .prepare('INSERT INTO planner_items (kind, name, monthly, note, sort_order) VALUES (?, ?, ?, ?, ?)')
+    .run(kind, (name ?? '').trim(), Number(monthly) || 0, note ?? null, Number(max.m) + 1)
+  res.json(db.prepare('SELECT * FROM planner_items WHERE id = ?').get(Number(info.lastInsertRowid)))
+})
+
+app.patch('/api/planner/:id', (req, res) => {
+  const id = Number(req.params.id)
+  const existing = db.prepare('SELECT * FROM planner_items WHERE id = ?').get(id) as
+    | PlannerItem
+    | undefined
+  if (!existing) return res.status(404).json({ error: 'not found' })
+  const body = req.body as Partial<{ name: string; monthly: number; note: string | null }>
+  const name = body.name !== undefined ? body.name : existing.name
+  const monthly =
+    body.monthly != null && !Number.isNaN(Number(body.monthly)) ? Number(body.monthly) : existing.monthly
+  const note = body.note !== undefined ? body.note : existing.note
+  db.prepare('UPDATE planner_items SET name = ?, monthly = ?, note = ? WHERE id = ?').run(
+    name,
+    monthly,
+    note,
+    id,
+  )
+  res.json(db.prepare('SELECT * FROM planner_items WHERE id = ?').get(id))
+})
+
+app.delete('/api/planner/:id', (req, res) => {
+  db.prepare('DELETE FROM planner_items WHERE id = ?').run(Number(req.params.id))
+  res.json({ ok: true })
+})
+
+// --- Rental properties ----------------------------------------------------
+interface PropertyRow {
+  id: number
+  name: string
+  address: string
+  config: string
+  created_at: string
+}
+
+function rowToProperty(r: PropertyRow): Property {
+  let config: PropertyConfig = {}
+  try {
+    config = JSON.parse(r.config || '{}')
+  } catch {
+    /* keep default */
+  }
+  return { id: r.id, name: r.name, address: r.address, config, created_at: r.created_at }
+}
+
+function getProperty(id: number): Property | null {
+  const row = db.prepare('SELECT * FROM properties WHERE id = ?').get(id) as PropertyRow | undefined
+  return row ? rowToProperty(row) : null
+}
+
+app.get('/api/properties', (_req, res) => {
+  const rows = db.prepare('SELECT * FROM properties ORDER BY id').all() as unknown as PropertyRow[]
+  res.json(rows.map(rowToProperty))
+})
+
+app.post('/api/properties', (req, res) => {
+  const { name, address, config } = req.body as {
+    name?: string
+    address?: string
+    config?: PropertyConfig
+  }
+  if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' })
+  const info = db
+    .prepare('INSERT INTO properties (name, address, config) VALUES (?, ?, ?)')
+    .run(name.trim(), (address ?? '').trim(), JSON.stringify(config ?? {}))
+  res.json(getProperty(Number(info.lastInsertRowid)))
+})
+
+app.get('/api/properties/:id', (req, res) => {
+  const p = getProperty(Number(req.params.id))
+  if (!p) return res.status(404).json({ error: 'not found' })
+  res.json(p)
+})
+
+app.patch('/api/properties/:id', (req, res) => {
+  const p = getProperty(Number(req.params.id))
+  if (!p) return res.status(404).json({ error: 'not found' })
+  const { name, address, config } = req.body as {
+    name?: string
+    address?: string
+    config?: Partial<PropertyConfig>
+  }
+  db.prepare('UPDATE properties SET name = ?, address = ?, config = ? WHERE id = ?').run(
+    name?.trim() || p.name,
+    address !== undefined ? address.trim() : p.address,
+    JSON.stringify({ ...p.config, ...config }),
+    p.id,
+  )
+  res.json(getProperty(p.id))
+})
+
+app.delete('/api/properties/:id', (req, res) => {
+  db.prepare('DELETE FROM properties WHERE id = ?').run(Number(req.params.id))
+  res.json({ ok: true })
+})
+
+app.get('/api/properties/:id/entries', (req, res) => {
+  const rows = db
+    .prepare('SELECT * FROM property_entries WHERE property_id = ? ORDER BY entry_date DESC, id DESC')
+    .all(Number(req.params.id)) as unknown as PropertyEntry[]
+  res.json(rows)
+})
+
+app.post('/api/properties/:id/entries', (req, res) => {
+  const propertyId = Number(req.params.id)
+  if (!getProperty(propertyId)) return res.status(404).json({ error: 'property not found' })
+  const { entry_date, kind, category, amount, note } = req.body as {
+    entry_date?: string
+    kind?: EntryKind
+    category?: string
+    amount?: number
+    note?: string | null
+  }
+  if (!entry_date || (kind !== 'income' && kind !== 'expense')) {
+    return res.status(400).json({ error: 'entry_date and kind (income|expense) are required' })
+  }
+  const info = db
+    .prepare(
+      'INSERT INTO property_entries (property_id, entry_date, kind, category, amount, note) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+    .run(propertyId, entry_date, kind, (category ?? '').trim(), Math.abs(Number(amount) || 0), note ?? null)
+  res.json(db.prepare('SELECT * FROM property_entries WHERE id = ?').get(Number(info.lastInsertRowid)))
+})
+
+app.patch('/api/properties/:id/entries/:eid', (req, res) => {
+  const eid = Number(req.params.eid)
+  const existing = db.prepare('SELECT * FROM property_entries WHERE id = ?').get(eid) as
+    | PropertyEntry
+    | undefined
+  if (!existing) return res.status(404).json({ error: 'not found' })
+  const b = req.body as Partial<{
+    entry_date: string
+    kind: EntryKind
+    category: string
+    amount: number
+    note: string | null
+    paid: number
+  }>
+  db.prepare(
+    'UPDATE property_entries SET entry_date = ?, kind = ?, category = ?, amount = ?, note = ?, paid = ? WHERE id = ?',
+  ).run(
+    b.entry_date ?? existing.entry_date,
+    b.kind ?? existing.kind,
+    b.category !== undefined ? b.category : existing.category,
+    b.amount != null && !Number.isNaN(Number(b.amount)) ? Math.abs(Number(b.amount)) : existing.amount,
+    b.note !== undefined ? b.note : existing.note,
+    b.paid != null ? (b.paid ? 1 : 0) : existing.paid,
+    eid,
+  )
+  res.json(db.prepare('SELECT * FROM property_entries WHERE id = ?').get(eid))
+})
+
+app.delete('/api/properties/:id/entries/:eid', (req, res) => {
+  db.prepare('DELETE FROM property_entries WHERE id = ? AND property_id = ?').run(
+    Number(req.params.eid),
+    Number(req.params.id),
+  )
+  res.json({ ok: true })
+})
+
+app.post('/api/properties/:id/entries/bulk-delete', (req, res) => {
+  const { ids } = req.body as { ids?: number[] }
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array' })
+  }
+  const stmt = db.prepare('DELETE FROM property_entries WHERE id = ? AND property_id = ?')
+  let deleted = 0
+  for (const id of ids) deleted += Number(stmt.run(Number(id), Number(req.params.id)).changes)
+  res.json({ deleted })
+})
+
+// Shared master list of property categories — feeds every property's dropdowns.
+const DEFAULT_PROPERTY_CATEGORIES = [
+  'Rent', 'Late fee', 'Pet rent', 'Other income',
+  'Mortgage', 'Property taxes', 'Insurance', 'Repairs', 'Maintenance', 'Management',
+  'Utilities', 'HOA', 'Vacancy / lost rent', 'CapEx', 'Supplies', 'Legal / professional',
+  'Security deposit', 'Other',
+]
+
+app.get('/api/property-categories', (_req, res) => {
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('propertyCategories') as
+    | { value: string }
+    | undefined
+  let cats: string[] = DEFAULT_PROPERTY_CATEGORIES
+  if (row) {
+    try {
+      const parsed = JSON.parse(row.value)
+      if (Array.isArray(parsed)) cats = parsed
+    } catch {
+      /* keep default */
+    }
+  }
+  res.json(cats)
+})
+
+app.put('/api/property-categories', (req, res) => {
+  const { categories } = req.body as { categories?: string[] }
+  const list = Array.isArray(categories)
+    ? [...new Set(categories.map((c) => String(c).trim()).filter(Boolean))]
+    : []
+  db.prepare(
+    `INSERT INTO app_settings (key, value) VALUES ('propertyCategories', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(JSON.stringify(list))
+  res.json(list)
+})
+
+// --- Leases (recurring rent) ---
+// Inclusive list of 'YYYY-MM' months from start to end.
+function monthRange(start: string, end: string): string[] {
+  const [sy, sm] = start.split('-').map(Number)
+  const [ey, em] = end.split('-').map(Number)
+  if (!sy || !sm || !ey || !em) return []
+  const out: string[] = []
+  let y = sy
+  let m = sm
+  // cap at 600 months (50 yrs) as a runaway guard
+  for (let i = 0; i < 600 && (y < ey || (y === ey && m <= em)); i++) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`)
+    m++
+    if (m > 12) {
+      m = 1
+      y++
+    }
+  }
+  return out
+}
+
+app.get('/api/properties/:id/leases', (req, res) => {
+  const rows = db
+    .prepare('SELECT * FROM leases WHERE property_id = ? ORDER BY start_month DESC, id DESC')
+    .all(Number(req.params.id)) as unknown as Lease[]
+  res.json(rows)
+})
+
+// Create a lease and generate one unpaid rent row per month in its range.
+app.post('/api/properties/:id/leases', (req, res) => {
+  const propertyId = Number(req.params.id)
+  if (!getProperty(propertyId)) return res.status(404).json({ error: 'property not found' })
+  const { tenant, start_month, end_month, monthly_rent, note, deposit, prepaid } = req.body as {
+    tenant?: string
+    start_month?: string
+    end_month?: string
+    monthly_rent?: number
+    note?: string | null
+    deposit?: number // security deposit collected at move-in
+    prepaid?: number // first/last month's rent or other upfront money
+  }
+  const months = monthRange(start_month ?? '', end_month ?? '')
+  if (months.length === 0) {
+    return res.status(400).json({ error: 'valid start_month and end_month (YYYY-MM) are required' })
+  }
+  const rent = Math.abs(Number(monthly_rent) || 0)
+  const info = db
+    .prepare(
+      'INSERT INTO leases (property_id, tenant, start_month, end_month, monthly_rent, note) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+    .run(propertyId, (tenant ?? '').trim(), months[0], months[months.length - 1], rent, note ?? null)
+  const leaseId = Number(info.lastInsertRowid)
+
+  const insert = db.prepare(
+    `INSERT INTO property_entries (property_id, entry_date, kind, category, amount, note, paid, lease_id)
+     VALUES (?, ?, 'income', ?, ?, ?, 0, ?)`,
+  )
+  for (const m of months) insert.run(propertyId, `${m}-01`, 'Rent', rent, tenant ? `Rent — ${tenant}` : null, leaseId)
+
+  // One-time move-in money, dated at the start month, also unpaid until collected.
+  let generated = months.length
+  const dep = Math.abs(Number(deposit) || 0)
+  const pre = Math.abs(Number(prepaid) || 0)
+  if (dep > 0) {
+    insert.run(propertyId, `${months[0]}-01`, 'Security deposit', dep, tenant ? `Deposit — ${tenant}` : 'refundable', leaseId)
+    generated++
+  }
+  if (pre > 0) {
+    insert.run(propertyId, `${months[0]}-01`, 'First / last month (upfront)', pre, null, leaseId)
+    generated++
+  }
+
+  res.json({ lease: db.prepare('SELECT * FROM leases WHERE id = ?').get(leaseId), generated })
+})
+
+// Delete a lease and the rent rows it generated.
+app.delete('/api/properties/:id/leases/:lid', (req, res) => {
+  const lid = Number(req.params.lid)
+  db.prepare('DELETE FROM property_entries WHERE lease_id = ?').run(lid)
+  db.prepare('DELETE FROM leases WHERE id = ? AND property_id = ?').run(lid, Number(req.params.id))
+  res.json({ ok: true })
 })
 
 app.listen(PORT, () => {

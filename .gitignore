@@ -1,6 +1,7 @@
 node_modules
 dist
 *.local
+.idea/
 
 # Your data — never commit it. Back this file up separately.
 budget.db

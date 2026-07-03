@@ -3,12 +3,38 @@ import type {
   BudgetConfig,
   BudgetType,
   ColumnMapping,
+  EntryKind,
   ImportResult,
   Kpis,
+  Lease,
   ParsePreview,
+  PlannerItem,
+  PlannerKind,
+  Property,
+  PropertyConfig,
+  PropertyEntry,
   Transaction,
   TxnFilters,
 } from '../../shared/types'
+
+export interface EntryInput {
+  entry_date: string
+  kind: EntryKind
+  category: string
+  amount: number
+  note?: string | null
+  paid?: number
+}
+
+export interface LeaseInput {
+  tenant: string
+  start_month: string
+  end_month: string
+  monthly_rent: number
+  note?: string | null
+  deposit?: number // security deposit collected at move-in
+  prepaid?: number // first/last month's rent or other upfront money
+}
 
 // Fields you can set when creating or editing a transaction by hand.
 export interface TxnInput {
@@ -123,4 +149,99 @@ export const api = {
 
   kpis: (id: number, filters: TxnFilters = {}) =>
     fetch(`/api/budgets/${id}/kpis${qs(filters)}`).then(json<Kpis>),
+
+  // --- Budget Planner ---
+  planner: () => fetch('/api/planner').then(json<PlannerItem[]>),
+
+  createPlannerItem: (kind: PlannerKind) =>
+    fetch('/api/planner', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind }),
+    }).then(json<PlannerItem>),
+
+  updatePlannerItem: (
+    id: number,
+    data: Partial<{ name: string; monthly: number; note: string | null }>,
+  ) =>
+    fetch(`/api/planner/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(json<PlannerItem>),
+
+  deletePlannerItem: (id: number) =>
+    fetch(`/api/planner/${id}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
+
+  // --- Rental properties ---
+  properties: () => fetch('/api/properties').then(json<Property[]>),
+
+  getProperty: (id: number) => fetch(`/api/properties/${id}`).then(json<Property>),
+
+  createProperty: (name: string, address: string, config: PropertyConfig) =>
+    fetch('/api/properties', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, address, config }),
+    }).then(json<Property>),
+
+  updateProperty: (
+    id: number,
+    patch: { name?: string; address?: string; config?: Partial<PropertyConfig> },
+  ) =>
+    fetch(`/api/properties/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(json<Property>),
+
+  deleteProperty: (id: number) =>
+    fetch(`/api/properties/${id}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
+
+  entries: (id: number) => fetch(`/api/properties/${id}/entries`).then(json<PropertyEntry[]>),
+
+  createEntry: (id: number, data: EntryInput) =>
+    fetch(`/api/properties/${id}/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(json<PropertyEntry>),
+
+  updateEntry: (id: number, eid: number, data: Partial<EntryInput>) =>
+    fetch(`/api/properties/${id}/entries/${eid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(json<PropertyEntry>),
+
+  deleteEntry: (id: number, eid: number) =>
+    fetch(`/api/properties/${id}/entries/${eid}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
+
+  leases: (id: number) => fetch(`/api/properties/${id}/leases`).then(json<Lease[]>),
+
+  createLease: (id: number, data: LeaseInput) =>
+    fetch(`/api/properties/${id}/leases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(json<{ lease: Lease; generated: number }>),
+
+  deleteLease: (id: number, lid: number) =>
+    fetch(`/api/properties/${id}/leases/${lid}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
+
+  bulkDeleteEntries: (id: number, ids: number[]) =>
+    fetch(`/api/properties/${id}/entries/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }).then(json<{ deleted: number }>),
+
+  propertyCategories: () => fetch('/api/property-categories').then(json<string[]>),
+
+  savePropertyCategories: (categories: string[]) =>
+    fetch('/api/property-categories', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categories }),
+    }).then(json<string[]>),
 }

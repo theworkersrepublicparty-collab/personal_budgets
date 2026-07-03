@@ -49,5 +49,76 @@ export function migrate(): void {
 
     CREATE INDEX IF NOT EXISTS idx_txn_budget_date
       ON transactions(budget_id, txn_date);
+
+    -- Budget Planner: a separate yearly plan (fixed / variable expenses + income),
+    -- independent of the imported-statement budgets above.
+    CREATE TABLE IF NOT EXISTS planner_items (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind       TEXT NOT NULL,            -- 'fixed' | 'variable' | 'income'
+      name       TEXT NOT NULL DEFAULT '',
+      monthly    REAL NOT NULL DEFAULT 0,  -- yearly is always monthly * 12
+      note       TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Rental properties you own/manage. The config (JSON) holds acquisition
+    -- assumptions used for return metrics (purchase price, cash invested, etc.).
+    CREATE TABLE IF NOT EXISTS properties (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      address    TEXT NOT NULL DEFAULT '',
+      config     TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Per-property ledger: actual income and expenses logged over time.
+    CREATE TABLE IF NOT EXISTS property_entries (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      entry_date  TEXT NOT NULL,
+      kind        TEXT NOT NULL,            -- 'income' | 'expense'
+      category    TEXT NOT NULL DEFAULT '',
+      amount      REAL NOT NULL DEFAULT 0,  -- always positive; kind gives the sign
+      note        TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pentry_property
+      ON property_entries(property_id, entry_date);
+
+    -- A rental contract: generates one monthly rent row per month in its range,
+    -- each starting unpaid until you check it off as collected.
+    CREATE TABLE IF NOT EXISTS leases (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id  INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      tenant       TEXT NOT NULL DEFAULT '',
+      start_month  TEXT NOT NULL,            -- 'YYYY-MM'
+      end_month    TEXT NOT NULL,            -- 'YYYY-MM'
+      monthly_rent REAL NOT NULL DEFAULT 0,
+      note         TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `)
+
+  db.exec(`
+    -- Simple key/value app settings (e.g. the shared property category list).
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `)
+
+  // Columns added after property_entries shipped — add them if missing.
+  ensureColumn('property_entries', 'paid', 'INTEGER NOT NULL DEFAULT 1')
+  ensureColumn('property_entries', 'lease_id', 'INTEGER')
+}
+
+// Idempotently add a column to an existing table (node:sqlite has no
+// "ADD COLUMN IF NOT EXISTS", so we check PRAGMA table_info first).
+function ensureColumn(table: string, column: string, def: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`)
+  }
 }
