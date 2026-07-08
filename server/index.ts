@@ -7,6 +7,7 @@ import { parseFile } from './parse.ts'
 import { normalizeRow, guessMapping } from './ingest.ts'
 import { matchCategory } from './rules.ts'
 import { seedIfEmpty } from './seed.ts'
+import { seedRecipesIfEmpty } from './recipe-seed.ts'
 import type {
   Budget,
   BudgetConfig,
@@ -20,12 +21,15 @@ import type {
   Property,
   PropertyConfig,
   PropertyEntry,
+  Recipe,
+  RecipeCategory,
   Transaction,
   TxnFilters,
 } from '../shared/types.ts'
 
 migrate()
 seedIfEmpty()
+seedRecipesIfEmpty()
 
 const app = express()
 app.use(cors())
@@ -757,6 +761,243 @@ app.delete('/api/properties/:id/leases/:lid', (req, res) => {
   db.prepare('DELETE FROM property_entries WHERE lease_id = ?').run(lid)
   db.prepare('DELETE FROM leases WHERE id = ? AND property_id = ?').run(lid, Number(req.params.id))
   res.json({ ok: true })
+})
+
+// --- Food Recipes ----------------------------------------------------------
+interface RecipeRow {
+  id: number
+  title: string
+  category: string
+  cook_time: number
+  protein: number
+  carbs: number
+  fats: number
+  calories: number
+  instructions: string
+  description: string
+  image: Uint8Array | null
+  image_mime: string | null
+  created_at: string
+}
+
+const RECIPE_CATEGORIES: RecipeCategory[] = ['breakfast', 'lunch', 'dinner', 'snack']
+
+function rowToRecipe(r: RecipeRow): Recipe {
+  return {
+    id: r.id,
+    title: r.title,
+    category: (RECIPE_CATEGORIES.includes(r.category as RecipeCategory) ? r.category : 'dinner') as RecipeCategory,
+    cook_time: r.cook_time,
+    protein: r.protein,
+    carbs: r.carbs,
+    fats: r.fats,
+    calories: r.calories,
+    instructions: r.instructions,
+    description: r.description,
+    has_image: !!r.image,
+    created_at: r.created_at,
+  }
+}
+
+const RECIPE_COLUMNS = `
+  id, title, category, cook_time, protein, carbs, fats, calories,
+  instructions, description, image, image_mime, created_at
+`
+
+app.get('/api/recipes', (req, res) => {
+  const { category, search } = req.query as { category?: string; search?: string }
+  const clauses: string[] = []
+  const params: string[] = []
+  if (category && RECIPE_CATEGORIES.includes(category as RecipeCategory)) {
+    clauses.push('category = ?')
+    params.push(category)
+  }
+  if (search) {
+    clauses.push('LOWER(title) LIKE ?')
+    params.push(`%${search.toLowerCase()}%`)
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  const rows = db
+    .prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes ${where} ORDER BY title COLLATE NOCASE`)
+    .all(...params) as unknown as RecipeRow[]
+  res.json(rows.map(rowToRecipe))
+})
+
+app.get('/api/recipes/:id', (req, res) => {
+  const row = db
+    .prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`)
+    .get(Number(req.params.id)) as RecipeRow | undefined
+  if (!row) return res.status(404).json({ error: 'not found' })
+  res.json(rowToRecipe(row))
+})
+
+app.get('/api/recipes/:id/image', (req, res) => {
+  const row = db
+    .prepare('SELECT image, image_mime FROM recipes WHERE id = ?')
+    .get(Number(req.params.id)) as { image: Uint8Array | null; image_mime: string | null } | undefined
+  if (!row || !row.image) return res.status(404).end()
+  res.set('Content-Type', row.image_mime || 'application/octet-stream')
+  res.send(Buffer.from(row.image))
+})
+
+function recipeFieldsFromBody(body: Record<string, unknown>) {
+  const category = RECIPE_CATEGORIES.includes(body.category as RecipeCategory)
+    ? (body.category as RecipeCategory)
+    : 'dinner'
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+  return {
+    title: String(body.title ?? '').trim(),
+    category,
+    cook_time: num(body.cook_time),
+    protein: num(body.protein),
+    carbs: num(body.carbs),
+    fats: num(body.fats),
+    calories: num(body.calories),
+    instructions: String(body.instructions ?? ''),
+    description: String(body.description ?? ''),
+  }
+}
+
+app.post('/api/recipes', upload.single('image'), (req, res) => {
+  const f = recipeFieldsFromBody(req.body as Record<string, unknown>)
+  if (!f.title) return res.status(400).json({ error: 'title is required' })
+  const info = db
+    .prepare(`
+      INSERT INTO recipes
+        (title, category, cook_time, protein, carbs, fats, calories, instructions, description, image, image_mime)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run(
+      f.title,
+      f.category,
+      f.cook_time,
+      f.protein,
+      f.carbs,
+      f.fats,
+      f.calories,
+      f.instructions,
+      f.description,
+      req.file ? req.file.buffer : null,
+      req.file ? req.file.mimetype : null,
+    )
+  const row = db
+    .prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`)
+    .get(Number(info.lastInsertRowid)) as unknown as RecipeRow
+  res.json(rowToRecipe(row))
+})
+
+app.patch('/api/recipes/:id', upload.single('image'), (req, res) => {
+  const id = Number(req.params.id)
+  const existing = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as
+    | RecipeRow
+    | undefined
+  if (!existing) return res.status(404).json({ error: 'not found' })
+
+  const body = req.body as Record<string, unknown>
+  const f = recipeFieldsFromBody({
+    title: body.title ?? existing.title,
+    category: body.category ?? existing.category,
+    cook_time: body.cook_time ?? existing.cook_time,
+    protein: body.protein ?? existing.protein,
+    carbs: body.carbs ?? existing.carbs,
+    fats: body.fats ?? existing.fats,
+    calories: body.calories ?? existing.calories,
+    instructions: body.instructions ?? existing.instructions,
+    description: body.description ?? existing.description,
+  })
+
+  db.prepare(`
+    UPDATE recipes SET
+      title = ?, category = ?, cook_time = ?, protein = ?, carbs = ?, fats = ?, calories = ?,
+      instructions = ?, description = ?
+      ${req.file ? ', image = ?, image_mime = ?' : ''}
+    WHERE id = ?
+  `).run(
+    ...(req.file
+      ? [
+          f.title,
+          f.category,
+          f.cook_time,
+          f.protein,
+          f.carbs,
+          f.fats,
+          f.calories,
+          f.instructions,
+          f.description,
+          req.file.buffer,
+          req.file.mimetype,
+          id,
+        ]
+      : [
+          f.title,
+          f.category,
+          f.cook_time,
+          f.protein,
+          f.carbs,
+          f.fats,
+          f.calories,
+          f.instructions,
+          f.description,
+          id,
+        ]),
+  )
+  const row = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as unknown as RecipeRow
+  res.json(rowToRecipe(row))
+})
+
+app.delete('/api/recipes/:id', (req, res) => {
+  db.prepare('DELETE FROM recipes WHERE id = ?').run(Number(req.params.id))
+  res.json({ ok: true })
+})
+
+// Cronometer "export as CSV" (a recipe's nutrition breakdown, or a diary day)
+// has per-ingredient/per-entry rows with columns like "Energy (kcal)",
+// "Protein (g)", "Carbs (g)", "Fat (g)" (naming varies slightly by export).
+// We sum whichever of those columns are present across all rows.
+function findColumn(headers: string[],...needles: string[]): string | null {
+  const lower = headers.map((h) => h.toLowerCase())
+  for (const needle of needles) {
+    const idx = lower.findIndex((h) => h.includes(needle))
+    if (idx !== -1) return headers[idx]
+  }
+  return null
+}
+
+app.post('/api/recipes/:id/import-cronometer', upload.single('file'), (req, res) => {
+  const id = Number(req.params.id)
+  const existing = db.prepare('SELECT id FROM recipes WHERE id = ?').get(id)
+  if (!existing) return res.status(404).json({ error: 'recipe not found' })
+  if (!req.file) return res.status(400).json({ error: 'no file uploaded' })
+
+  const { headers, rows } = parseFile(req.file.originalname, req.file.buffer)
+  const calCol = findColumn(headers, 'energy', 'calorie')
+  const proteinCol = findColumn(headers, 'protein')
+  const carbsCol = findColumn(headers, 'carb')
+  const fatCol = findColumn(headers, 'fat')
+
+  if (!calCol && !proteinCol && !carbsCol && !fatCol) {
+    return res.status(400).json({ error: 'no recognizable macro columns found in this file' })
+  }
+
+  const sum = (col: string | null) =>
+    col ? rows.reduce((acc, r) => acc + (parseFloat(r[col]) || 0), 0) : 0
+
+  const macros = {
+    calories: Math.round(sum(calCol) * 10) / 10,
+    protein: Math.round(sum(proteinCol) * 10) / 10,
+    carbs: Math.round(sum(carbsCol) * 10) / 10,
+    fats: Math.round(sum(fatCol) * 10) / 10,
+  }
+
+  db.prepare('UPDATE recipes SET protein = ?, carbs = ?, fats = ?, calories = ? WHERE id = ?').run(
+    macros.protein,
+    macros.carbs,
+    macros.fats,
+    macros.calories,
+    id,
+  )
+  const row = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as unknown as RecipeRow
+  res.json({ recipe: rowToRecipe(row), rowsRead: rows.length, ...macros })
 })
 
 app.listen(PORT, () => {

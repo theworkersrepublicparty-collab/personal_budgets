@@ -107,11 +107,39 @@ export function migrate(): void {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    -- Food recipes. Photos live here as blobs so the whole thing (like the
+    -- rest of the app) is one portable file — the same format a future
+    -- iPhone/Android build would read on-device.
+    CREATE TABLE IF NOT EXISTS recipes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      title        TEXT NOT NULL,
+      category     TEXT NOT NULL DEFAULT 'dinner',  -- breakfast | lunch | dinner | snack
+      cook_time    INTEGER NOT NULL DEFAULT 0,       -- minutes
+      protein      REAL NOT NULL DEFAULT 0,          -- grams
+      carbs        REAL NOT NULL DEFAULT 0,          -- grams
+      fats         REAL NOT NULL DEFAULT 0,          -- grams
+      calories     REAL NOT NULL DEFAULT 0,
+      instructions TEXT NOT NULL DEFAULT '',
+      description  TEXT NOT NULL DEFAULT '',
+      image        BLOB,
+      image_mime   TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_recipes_category ON recipes(category);
   `)
 
   // Columns added after property_entries shipped — add them if missing.
   ensureColumn('property_entries', 'paid', 'INTEGER NOT NULL DEFAULT 1')
   ensureColumn('property_entries', 'lease_id', 'INTEGER')
+
+  // The recipes table briefly shipped with an `image_path` column (files on
+  // disk) before switching to blob storage for portability — add the blob
+  // columns if an older recipes table is already on disk. image_path is left
+  // in place, unused, rather than attempting a destructive column drop.
+  ensureColumn('recipes', 'image', 'BLOB')
+  ensureColumn('recipes', 'image_mime', 'TEXT')
 }
 
 // Idempotently add a column to an existing table (node:sqlite has no

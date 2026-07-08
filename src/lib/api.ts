@@ -13,6 +13,8 @@ import type {
   Property,
   PropertyConfig,
   PropertyEntry,
+  Recipe,
+  RecipeCategory,
   Transaction,
   TxnFilters,
 } from '../../shared/types'
@@ -244,4 +246,59 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ categories }),
     }).then(json<string[]>),
+
+  // --- Food Recipes ---
+  recipes: (filters: { category?: RecipeCategory; search?: string } = {}) => {
+    const p = new URLSearchParams()
+    if (filters.category) p.set('category', filters.category)
+    if (filters.search) p.set('search', filters.search)
+    const s = p.toString()
+    return fetch(`/api/recipes${s ? `?${s}` : ''}`).then(json<Recipe[]>)
+  },
+
+  getRecipe: (id: number) => fetch(`/api/recipes/${id}`).then(json<Recipe>),
+
+  recipeImageUrl: (id: number) => `/api/recipes/${id}/image`,
+
+  createRecipe: (data: RecipeInput, image?: File | null) => {
+    const fd = recipeFormData(data, image)
+    return fetch('/api/recipes', { method: 'POST', body: fd }).then(json<Recipe>)
+  },
+
+  updateRecipe: (id: number, data: Partial<RecipeInput>, image?: File | null) => {
+    const fd = recipeFormData(data, image)
+    return fetch(`/api/recipes/${id}`, { method: 'PATCH', body: fd }).then(json<Recipe>)
+  },
+
+  deleteRecipe: (id: number) =>
+    fetch(`/api/recipes/${id}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
+
+  importCronometer: (id: number, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return fetch(`/api/recipes/${id}/import-cronometer`, { method: 'POST', body: fd }).then(
+      json<{ recipe: Recipe; rowsRead: number; protein: number; carbs: number; fats: number; calories: number }>,
+    )
+  },
+}
+
+export interface RecipeInput {
+  title: string
+  category: RecipeCategory
+  cook_time: number
+  protein: number
+  carbs: number
+  fats: number
+  calories: number
+  instructions: string
+  description: string
+}
+
+function recipeFormData(data: Partial<RecipeInput>, image?: File | null): FormData {
+  const fd = new FormData()
+  Object.entries(data).forEach(([k, v]) => {
+    if (v !== undefined) fd.append(k, String(v))
+  })
+  if (image) fd.append('image', image)
+  return fd
 }

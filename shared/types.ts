@@ -143,3 +143,26 @@ export interface TxnFilters {
   section?: string
   direction?: 'in' | 'out'
 }
+
+// --- Food Recipes -----------------------------------------------------
+// Stored in budget.db (like everything else in this app) so recipes carry
+// over the same way to another machine or a future iPhone/Android build:
+// SQLite is native on both. Photos are stored as blobs in the same file —
+// one file is still everything you own. A separate git-tracked seed
+// (recipe-seed.ts) ships a starter set that's inserted on first run.
+export type RecipeCategory = 'breakfast' | 'lunch' | 'dinner' | 'snack'
+
+export interface Recipe {
+  id: number
+  title: string
+  category: RecipeCategory
+  cook_time: number // minutes
+  protein: number // grams
+  carbs: number // grams
+  fats: number // grams
+  calories: number
+  instructions: string
+  description: string
+  has_image: boolean // fetch the photo separately at /api/recipes/:id/image
+  created_at: string
+}
