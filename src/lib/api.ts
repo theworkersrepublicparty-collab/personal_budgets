@@ -280,6 +280,17 @@ export const api = {
       json<{ recipe: Recipe; rowsRead: number; protein: number; carbs: number; fats: number; calories: number }>,
     )
   },
+
+  // Create a brand-new recipe from a Cronometer file (title + category supplied by the user).
+  importCronometerNew: (title: string, category: RecipeCategory, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('title', title)
+    fd.append('category', category)
+    return fetch('/api/recipes/import-cronometer', { method: 'POST', body: fd }).then(
+      json<{ recipe: Recipe; rowsRead: number; protein: number; carbs: number; fats: number; calories: number }>,
+    )
+  },
 }
 
 export interface RecipeInput {

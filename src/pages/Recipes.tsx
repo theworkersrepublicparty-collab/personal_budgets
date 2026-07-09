@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, type RecipeInput } from '../lib/api'
 import type { Recipe, RecipeCategory } from '../../shared/types'
 
@@ -11,11 +11,12 @@ const CATEGORIES: { key: RecipeCategory; label: string; emoji: string }[] = [
 ]
 
 export default function Recipes() {
+  const navigate = useNavigate()
   const [active, setActive] = useState<RecipeCategory>('breakfast')
   const [search, setSearch] = useState('')
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
-  const [adding, setAdding] = useState(false)
+  const [panel, setPanel] = useState<'add' | 'import' | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -28,19 +29,29 @@ export default function Recipes() {
     load()
   }, [load])
 
+  const toggle = (p: 'add' | 'import') => setPanel((cur) => (cur === p ? null : p))
+
   return (
     <div>
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">🍽️ Food Recipes</h1>
           <p className="text-sm text-slate-400">Each category keeps its own list — search only looks within the tab you're on.</p>
         </div>
-        <button
-          onClick={() => setAdding((a) => !a)}
-          className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-        >
-          {adding ? 'Cancel' : '+ Add recipe'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => toggle('import')}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+          >
+            {panel === 'import' ? 'Cancel' : '⬇ Import from Cronometer'}
+          </button>
+          <button
+            onClick={() => toggle('add')}
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            {panel === 'add' ? 'Cancel' : '+ Add recipe'}
+          </button>
+        </div>
       </div>
 
       {/* Category tabs — each is a self-contained list */}
@@ -70,13 +81,23 @@ export default function Recipes() {
         />
       </div>
 
-      {adding && (
+      {panel === 'add' && (
         <AddRecipe
           defaultCategory={active}
           onDone={(created) => {
-            setAdding(false)
+            setPanel(null)
             setActive(created.category)
             load()
+          }}
+        />
+      )}
+
+      {panel === 'import' && (
+        <ImportRecipe
+          defaultCategory={active}
+          onDone={(created) => {
+            setPanel(null)
+            navigate(`/recipes/${created.id}`)
           }}
         />
       )}
@@ -236,6 +257,112 @@ function AddRecipe({
           Save recipe
         </button>
       </div>
+    </form>
+  )
+}
+
+function ImportRecipe({
+  defaultCategory,
+  onDone,
+}: {
+  defaultCategory: RecipeCategory
+  onDone: (created: Recipe) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState<RecipeCategory>(defaultCategory)
+  const [file, setFile] = useState<File | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!title.trim() || !file) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await api.importCronometerNew(title.trim(), category, file)
+      onDone(res.recipe)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-700">New recipe from a Cronometer file</h3>
+        <button
+          type="button"
+          onClick={() => setShowHelp((s) => !s)}
+          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+        >
+          ℹ︎ How do I get the file?
+        </button>
+      </div>
+
+      {showHelp && (
+        <div className="mb-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+          <p className="mb-1 font-semibold text-slate-700">Exporting from Cronometer</p>
+          <ol className="ml-4 list-decimal space-y-0.5">
+            <li>Open <span className="font-medium">cronometer.com</span> in a web browser and log in — the phone app can't export, so use the website (works in your phone's browser too).</li>
+            <li>Go to <span className="font-medium">Account → Export Data</span>.</li>
+            <li>Choose <span className="font-medium">Servings</span> (per-food rows) or a Daily Nutrition export, pick the day(s) for this meal, and export.</li>
+            <li>A <span className="font-medium">.csv</span> file downloads. Pick it below.</li>
+          </ol>
+          <p className="mt-1 text-[11px] text-slate-400">
+            The importer adds up the Protein / Carbs / Fat / Calories columns across every row. Not tested against a real
+            export yet — if the numbers look off, send me the file and I'll adjust.
+          </p>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="flex flex-col sm:col-span-2">
+          <span className="mb-1 text-[11px] font-medium text-slate-500">Recipe name</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Chicken & rice bowl"
+            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-400"
+          />
+        </label>
+        <label className="flex flex-col">
+          <span className="mb-1 text-[11px] font-medium text-slate-500">Category</span>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as RecipeCategory)}
+            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.emoji} {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col">
+          <span className="mb-1 text-[11px] font-medium text-slate-500">Cronometer file</span>
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="text-xs"
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          disabled={busy || !title.trim() || !file}
+          className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? 'Importing…' : 'Import & create recipe'}
+        </button>
+        <span className="text-xs text-slate-400">Macros fill in from the file; add photo &amp; steps after.</span>
+      </div>
+      {error && <p className="mt-2 text-xs text-money-out">{error}</p>}
     </form>
   )
 }

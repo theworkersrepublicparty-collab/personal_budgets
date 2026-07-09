@@ -963,31 +963,70 @@ function findColumn(headers: string[],...needles: string[]): string | null {
   return null
 }
 
+// Parse a Cronometer export and sum the macro columns across every row.
+// Returns null when the file has no recognizable macro columns at all.
+function cronometerMacros(originalname: string, buffer: Buffer) {
+  const { headers, rows } = parseFile(originalname, buffer)
+  const calCol = findColumn(headers, 'energy', 'calorie')
+  const proteinCol = findColumn(headers, 'protein')
+  const carbsCol = findColumn(headers, 'carb')
+  const fatCol = findColumn(headers, 'fat')
+
+  if (!calCol && !proteinCol && !carbsCol && !fatCol) return null
+
+  const sum = (col: string | null) =>
+    col ? rows.reduce((acc, r) => acc + (parseFloat(r[col]) || 0), 0) : 0
+
+  return {
+    rowsRead: rows.length,
+    macros: {
+      calories: Math.round(sum(calCol) * 10) / 10,
+      protein: Math.round(sum(proteinCol) * 10) / 10,
+      carbs: Math.round(sum(carbsCol) * 10) / 10,
+      fats: Math.round(sum(fatCol) * 10) / 10,
+    },
+  }
+}
+
+// Create a brand-new recipe straight from a Cronometer file: caller supplies
+// the title + category, macros come from the file, everything else starts blank.
+app.post('/api/recipes/import-cronometer', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no file uploaded' })
+  const body = req.body as Record<string, unknown>
+  const title = String(body.title ?? '').trim()
+  if (!title) return res.status(400).json({ error: 'title is required' })
+  const category = RECIPE_CATEGORIES.includes(body.category as RecipeCategory)
+    ? (body.category as RecipeCategory)
+    : 'dinner'
+
+  const parsed = cronometerMacros(req.file.originalname, req.file.buffer)
+  if (!parsed) return res.status(400).json({ error: 'no recognizable macro columns found in this file' })
+  const { macros, rowsRead } = parsed
+
+  const info = db
+    .prepare(`
+      INSERT INTO recipes
+        (title, category, cook_time, protein, carbs, fats, calories, instructions, description, image, image_mime)
+      VALUES (?, ?, 0, ?, ?, ?, ?, '', '', NULL, NULL)
+    `)
+    .run(title, category, macros.protein, macros.carbs, macros.fats, macros.calories)
+  const row = db
+    .prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`)
+    .get(Number(info.lastInsertRowid)) as unknown as RecipeRow
+  res.json({ recipe: rowToRecipe(row), rowsRead, ...macros })
+})
+
 app.post('/api/recipes/:id/import-cronometer', upload.single('file'), (req, res) => {
   const id = Number(req.params.id)
   const existing = db.prepare('SELECT id FROM recipes WHERE id = ?').get(id)
   if (!existing) return res.status(404).json({ error: 'recipe not found' })
   if (!req.file) return res.status(400).json({ error: 'no file uploaded' })
 
-  const { headers, rows } = parseFile(req.file.originalname, req.file.buffer)
-  const calCol = findColumn(headers, 'energy', 'calorie')
-  const proteinCol = findColumn(headers, 'protein')
-  const carbsCol = findColumn(headers, 'carb')
-  const fatCol = findColumn(headers, 'fat')
-
-  if (!calCol && !proteinCol && !carbsCol && !fatCol) {
+  const parsed = cronometerMacros(req.file.originalname, req.file.buffer)
+  if (!parsed) {
     return res.status(400).json({ error: 'no recognizable macro columns found in this file' })
   }
-
-  const sum = (col: string | null) =>
-    col ? rows.reduce((acc, r) => acc + (parseFloat(r[col]) || 0), 0) : 0
-
-  const macros = {
-    calories: Math.round(sum(calCol) * 10) / 10,
-    protein: Math.round(sum(proteinCol) * 10) / 10,
-    carbs: Math.round(sum(carbsCol) * 10) / 10,
-    fats: Math.round(sum(fatCol) * 10) / 10,
-  }
+  const { macros, rowsRead } = parsed
 
   db.prepare('UPDATE recipes SET protein = ?, carbs = ?, fats = ?, calories = ? WHERE id = ?').run(
     macros.protein,
@@ -997,7 +1036,7 @@ app.post('/api/recipes/:id/import-cronometer', upload.single('file'), (req, res)
     id,
   )
   const row = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as unknown as RecipeRow
-  res.json({ recipe: rowToRecipe(row), rowsRead: rows.length, ...macros })
+  res.json({ recipe: rowToRecipe(row), rowsRead, ...macros })
 })
 
 app.listen(PORT, () => {
