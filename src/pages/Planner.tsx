@@ -56,7 +56,7 @@ export default function Planner() {
       </div>
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">📅 Budget Planner</h1>
+          <h1 className="text-2xl font-bold">📅 Yearly Planner</h1>
           <p className="text-sm text-slate-400">
             Your yearly plan — separate from imported statements. Yearly = monthly × 12.
           </p>
@@ -171,8 +171,19 @@ function Section({
                   }
                 />
               </td>
-              <td className={'whitespace-nowrap px-2 py-1 text-right ' + amountClass}>
-                {money((Number(r.monthly) || 0) * 12)}
+              <td className="px-2 py-1">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={r.monthly === 0 ? '' : Math.round((Number(r.monthly) || 0) * 12 * 100) / 100}
+                  placeholder="0.00"
+                  onChange={(e) => onLocal(r.id, { monthly: (parseFloat(e.target.value) || 0) / 12 })}
+                  onBlur={(e) => onSave(r.id, { monthly: (parseFloat(e.target.value) || 0) / 12 })}
+                  className={
+                    'w-24 rounded border border-transparent px-1.5 py-1 text-right hover:border-slate-200 focus:border-slate-300 focus:outline-none ' +
+                    amountClass
+                  }
+                />
               </td>
               <td className="px-2 py-1">
                 <input

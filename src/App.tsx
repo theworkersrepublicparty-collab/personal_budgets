@@ -19,10 +19,10 @@ export default function App() {
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             <Link to="/" className="text-slate-500 hover:text-ink">
-              Budgets
+              🧮 Budgets
             </Link>
             <Link to="/planner" className="text-slate-500 hover:text-ink">
-              📅 Planner
+              📅 Yearly Planner
             </Link>
             <Link to="/properties" className="text-slate-500 hover:text-ink">
               🏠 Properties
