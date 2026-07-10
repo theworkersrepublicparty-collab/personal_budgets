@@ -134,6 +134,11 @@ export function migrate(): void {
   ensureColumn('property_entries', 'paid', 'INTEGER NOT NULL DEFAULT 1')
   ensureColumn('property_entries', 'lease_id', 'INTEGER')
 
+  // User-set account label on a transaction (e.g. "Chase Card" vs "Checking"),
+  // filled in on import or when adding a row by hand. Distinct from source_file
+  // (the auto-captured filename) — this one is yours to name.
+  ensureColumn('transactions', 'source', 'TEXT')
+
   // The recipes table briefly shipped with an `image_path` column (files on
   // disk) before switching to blob storage for portability — add the blob
   // columns if an older recipes table is already on disk. image_path is left

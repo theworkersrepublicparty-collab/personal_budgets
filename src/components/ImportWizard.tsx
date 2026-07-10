@@ -20,6 +20,7 @@ export default function ImportWizard({
   const [parsed, setParsed] = useState<ParseResponse | null>(null)
   const [mapping, setMapping] = useState<ColumnMapping | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
+  const [source, setSource] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,7 +52,7 @@ export default function ImportWizard({
     setBusy(true)
     setError(null)
     try {
-      const res = await api.import(budgetId, file, mapping)
+      const res = await api.import(budgetId, file, mapping, source.trim() || undefined)
       setResult(res)
       setStep('done')
       onImported()
@@ -112,12 +113,26 @@ export default function ImportWizard({
           )}
 
           {step === 'map' && parsed && mapping && (
-            <MapStep
-              parsed={parsed}
-              mapping={mapping}
-              set={set}
-              setMode={(mode) => set('amountMode', mode)}
-            />
+            <>
+              <MapStep
+                parsed={parsed}
+                mapping={mapping}
+                set={set}
+                setMode={(mode) => set('amountMode', mode)}
+              />
+              <label className="mt-4 block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Source / account for this file (optional)
+                </span>
+                <input
+                  type="text"
+                  value={source}
+                  placeholder="e.g. Chase Card — applied to every row in this file"
+                  onChange={(e) => setSource(e.target.value)}
+                  className="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </>
           )}
 
           {step === 'done' && result && (
@@ -240,9 +255,6 @@ function MapStep({
 
         <Field label="Category column (optional)">
           <Select value={mapping.category} onChange={(v) => set('category', v)} options={options} />
-        </Field>
-        <Field label="Section column (optional)">
-          <Select value={mapping.section} onChange={(v) => set('section', v)} options={options} />
         </Field>
       </div>
 

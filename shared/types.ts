@@ -42,7 +42,8 @@ export interface Transaction {
   direction: 'in' | 'out'
   category: string | null
   section: string | null
-  source_file: string | null
+  source: string | null // your account label, e.g. "Chase Card" (you set this)
+  source_file: string | null // auto-captured import filename (not user-set)
   created_at: string
 }
 

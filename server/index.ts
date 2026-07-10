@@ -243,11 +243,15 @@ app.post('/api/budgets/:id/import', upload.single('file'), (req, res) => {
     return res.status(400).json({ error: 'invalid mapping' })
   }
 
+  // One account label for the whole file (e.g. "Chase Card"), applied to every
+  // row imported. Optional — blank leaves the rows' source empty.
+  const source = (req.body.source ? String(req.body.source).trim() : '') || null
+
   const { rows } = parseFile(req.file.originalname, req.file.buffer)
   const insert = db.prepare(`
     INSERT OR IGNORE INTO transactions
-      (budget_id, txn_date, description, amount, direction, category, section, source_file, raw_row, dedupe_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (budget_id, txn_date, description, amount, direction, category, section, source, source_file, raw_row, dedupe_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
 
   const rules = b.config.rules ?? {}
@@ -268,6 +272,7 @@ app.post('/api/budgets/:id/import', upload.single('file'), (req, res) => {
       n.direction,
       category,
       n.section,
+      source,
       req.file.originalname,
       n.raw_row,
       n.dedupe_hash,
@@ -304,12 +309,13 @@ app.delete('/api/budgets/:id/transactions', (req, res) => {
 app.post('/api/budgets/:id/transactions', (req, res) => {
   const b = getBudget(Number(req.params.id))
   if (!b) return res.status(404).json({ error: 'budget not found' })
-  const { txn_date, description, amount, category, section } = req.body as {
+  const { txn_date, description, amount, category, section, source } = req.body as {
     txn_date?: string
     description?: string
     amount?: number
     category?: string | null
     section?: string | null
+    source?: string | null
   }
   const amt = Number(amount)
   if (!txn_date || Number.isNaN(amt)) {
@@ -322,8 +328,8 @@ app.post('/api/budgets/:id/transactions', (req, res) => {
   const info = db
     .prepare(
       `INSERT INTO transactions
-        (budget_id, txn_date, description, amount, direction, category, section, source_file, raw_row, dedupe_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (budget_id, txn_date, description, amount, direction, category, section, source, source_file, raw_row, dedupe_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       b.id,
@@ -333,6 +339,7 @@ app.post('/api/budgets/:id/transactions', (req, res) => {
       direction,
       category || null,
       section || null,
+      source || null,
       'manual entry',
       '',
       dedupe_hash,
@@ -356,6 +363,7 @@ app.patch('/api/budgets/:id/transactions/:txnId', (req, res) => {
     amount: number
     category: string | null
     section: string | null
+    source: string | null
   }>
   const txn_date = body.txn_date ?? existing.txn_date
   const description = body.description ?? existing.description
@@ -364,12 +372,13 @@ app.patch('/api/budgets/:id/transactions/:txnId', (req, res) => {
   const direction: 'in' | 'out' = amount >= 0 ? 'in' : 'out'
   const category = body.category !== undefined ? body.category || null : existing.category
   const section = body.section !== undefined ? body.section || null : existing.section
+  const source = body.source !== undefined ? body.source || null : existing.source
 
   db.prepare(
     `UPDATE transactions
-       SET txn_date = ?, description = ?, amount = ?, direction = ?, category = ?, section = ?
+       SET txn_date = ?, description = ?, amount = ?, direction = ?, category = ?, section = ?, source = ?
      WHERE id = ?`,
-  ).run(txn_date, description, amount, direction, category, section, txnId)
+  ).run(txn_date, description, amount, direction, category, section, source, txnId)
   res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(txnId))
 })
 

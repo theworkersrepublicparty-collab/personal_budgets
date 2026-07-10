@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createColumnHelper,
   flexRender,
@@ -96,7 +96,11 @@ export default function TxnTable({
       col.accessor('description', {
         header: 'Description',
         filterFn: 'includesString',
-        cell: (c) => <span className="block max-w-[360px] truncate">{c.getValue()}</span>,
+        cell: (c) => (
+          <span title={c.getValue()} className="block max-w-[360px] truncate">
+            {c.getValue()}
+          </span>
+        ),
       }),
       col.accessor('category', {
         header: 'Category',
@@ -130,6 +134,11 @@ export default function TxnTable({
             }),
           ]
         : []),
+      col.accessor('source', {
+        header: 'Source',
+        filterFn: includesSome,
+        cell: (c) => <span className="text-slate-500">{c.getValue() || '—'}</span>,
+      }),
       col.accessor('amount', {
         enableColumnFilter: false,
         header: () => <div className="text-right">Amount</div>,
@@ -272,7 +281,7 @@ export default function TxnTable({
 // dropdown (pick one or many, clear all); every other column gets a plain
 // "contains" text box.
 function ColumnFilter({ column }: { column: Column<Transaction, unknown> }) {
-  if (column.id === 'category') return <CheckboxFilter column={column} />
+  if (column.id === 'category' || column.id === 'source') return <CheckboxFilter column={column} />
 
   const value = (column.getFilterValue() ?? '') as string
   return (
@@ -289,6 +298,8 @@ function ColumnFilter({ column }: { column: Column<Transaction, unknown> }) {
 // (plus "(blank)"), with Select all / Clear. Checking none = show everything.
 function CheckboxFilter({ column }: { column: Column<Transaction, unknown> }) {
   const [open, setOpen] = useState(false)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
   const selected = (column.getFilterValue() as string[] | undefined) ?? []
 
   const values = [...column.getFacetedUniqueValues().keys()]
@@ -302,13 +313,34 @@ function CheckboxFilter({ column }: { column: Column<Transaction, unknown> }) {
     column.setFilterValue(set.size ? [...set] : undefined)
   }
 
+  // Anchor the menu with fixed coords taken from the button so it renders over
+  // the table instead of being clipped by its overflow-x-auto scroll wrapper.
+  function openMenu() {
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 4, left: r.left })
+    setOpen(true)
+  }
+
+  // Close on scroll/resize so the fixed menu never floats away from its button.
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
   const label = selected.length === 0 ? 'All ▾' : `${selected.length} picked ▾`
 
   return (
     <div className="relative">
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
         className="w-full max-w-[150px] truncate rounded border border-slate-200 bg-white px-1.5 py-1 text-left text-xs font-normal normal-case text-slate-700 hover:border-slate-300"
       >
         {label}
@@ -316,7 +348,10 @@ function CheckboxFilter({ column }: { column: Column<Transaction, unknown> }) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 z-20 mt-1 max-h-64 w-52 overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs font-normal normal-case shadow-lg">
+          <div
+            style={{ top: pos.top, left: pos.left }}
+            className="fixed z-20 max-h-64 w-52 overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs font-normal normal-case shadow-lg"
+          >
             <div className="mb-1 flex justify-between border-b border-slate-100 pb-1">
               <button
                 type="button"

@@ -25,6 +25,7 @@ export default function TxnForm({
     existing ? (existing.amount >= 0 ? 'in' : 'out') : 'out',
   )
   const [category, setCategory] = useState(existing?.category ?? '')
+  const [source, setSource] = useState(existing?.source ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,6 +44,7 @@ export default function TxnForm({
         description: description.trim(),
         amount: direction === 'out' ? -Math.abs(num) : Math.abs(num),
         category: category || null,
+        source: source.trim() || null,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.')
@@ -117,6 +119,16 @@ export default function TxnForm({
                 <option value={category}>{category} (from import)</option>
               )}
             </select>
+          </Field>
+
+          <Field label="Source / account (optional)">
+            <input
+              type="text"
+              value={source}
+              placeholder="e.g. Chase Card"
+              onChange={(e) => setSource(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
           </Field>
         </div>
 

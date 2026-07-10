@@ -45,6 +45,7 @@ export interface TxnInput {
   amount: number // signed: + = money in, - = money out
   category?: string | null
   section?: string | null
+  source?: string | null // account label, e.g. "Chase Card"
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -96,10 +97,11 @@ export const api = {
     return fetch('/api/parse', { method: 'POST', body: fd }).then(json<ParseResponse>)
   },
 
-  import: (id: number, file: File, mapping: ColumnMapping) => {
+  import: (id: number, file: File, mapping: ColumnMapping, source?: string) => {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('mapping', JSON.stringify(mapping))
+    if (source) fd.append('source', source)
     return fetch(`/api/budgets/${id}/import`, { method: 'POST', body: fd }).then(json<ImportResult>)
   },
 
