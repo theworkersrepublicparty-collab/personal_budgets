@@ -8,6 +8,7 @@ import { normalizeRow, guessMapping } from './ingest.ts'
 import { matchCategory } from './rules.ts'
 import { seedIfEmpty } from './seed.ts'
 import { seedRecipesIfEmpty } from './recipe-seed.ts'
+import { buildBackup, restoreBackup, parseGroups } from './backup.ts'
 import type {
   Budget,
   BudgetConfig,
@@ -301,6 +302,17 @@ app.get('/api/budgets/:id/transactions', (req, res) => {
 app.delete('/api/budgets/:id/transactions', (req, res) => {
   db.prepare('DELETE FROM transactions WHERE budget_id = ?').run(Number(req.params.id))
   res.json({ ok: true })
+})
+
+// Earliest / latest transaction dates (ignores filters) — powers the "latest
+// transaction" hint next to the filters so you know where to start a date range.
+app.get('/api/budgets/:id/date-range', (req, res) => {
+  const row = db
+    .prepare(
+      'SELECT MIN(txn_date) AS min, MAX(txn_date) AS max, COUNT(*) AS count FROM transactions WHERE budget_id = ?',
+    )
+    .get(Number(req.params.id)) as { min: string | null; max: string | null; count: number }
+  res.json(row)
 })
 
 // Create a single transaction by hand. `amount` is signed: + = money in,
@@ -846,6 +858,11 @@ app.get('/api/recipes/:id/image', (req, res) => {
     .get(Number(req.params.id)) as { image: Uint8Array | null; image_mime: string | null } | undefined
   if (!row || !row.image) return res.status(404).end()
   res.set('Content-Type', row.image_mime || 'application/octet-stream')
+  // The image URL never changes (it's keyed by recipe id), so a replaced photo
+  // would otherwise keep showing the browser's cached copy. `no-cache` makes the
+  // browser revalidate first; Express's ETag returns 304 when it's unchanged, so
+  // this stays cheap while always showing the current photo.
+  res.set('Cache-Control', 'no-cache')
   res.send(Buffer.from(row.image))
 })
 
@@ -915,40 +932,33 @@ app.patch('/api/recipes/:id', upload.single('image'), (req, res) => {
     description: body.description ?? existing.description,
   })
 
+  // Photo has three cases: a new file replaces it, remove_image=1 clears it
+  // (recipe falls back to the default category icon), or leave it unchanged.
+  const removeImage = (req.body as Record<string, unknown>).remove_image === '1'
+  const imageClause = req.file
+    ? ', image = ?, image_mime = ?'
+    : removeImage
+      ? ', image = NULL, image_mime = NULL'
+      : ''
+  const imageArgs = req.file ? [req.file.buffer, req.file.mimetype] : []
+
   db.prepare(`
     UPDATE recipes SET
       title = ?, category = ?, cook_time = ?, protein = ?, carbs = ?, fats = ?, calories = ?,
-      instructions = ?, description = ?
-      ${req.file ? ', image = ?, image_mime = ?' : ''}
+      instructions = ?, description = ?${imageClause}
     WHERE id = ?
   `).run(
-    ...(req.file
-      ? [
-          f.title,
-          f.category,
-          f.cook_time,
-          f.protein,
-          f.carbs,
-          f.fats,
-          f.calories,
-          f.instructions,
-          f.description,
-          req.file.buffer,
-          req.file.mimetype,
-          id,
-        ]
-      : [
-          f.title,
-          f.category,
-          f.cook_time,
-          f.protein,
-          f.carbs,
-          f.fats,
-          f.calories,
-          f.instructions,
-          f.description,
-          id,
-        ]),
+    f.title,
+    f.category,
+    f.cook_time,
+    f.protein,
+    f.carbs,
+    f.fats,
+    f.calories,
+    f.instructions,
+    f.description,
+    ...imageArgs,
+    id,
   )
   const row = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as unknown as RecipeRow
   res.json(rowToRecipe(row))
@@ -957,6 +967,18 @@ app.patch('/api/recipes/:id', upload.single('image'), (req, res) => {
 app.delete('/api/recipes/:id', (req, res) => {
   db.prepare('DELETE FROM recipes WHERE id = ?').run(Number(req.params.id))
   res.json({ ok: true })
+})
+
+// Delete many recipes at once (bulk delete of selected cards, across categories).
+app.post('/api/recipes/bulk-delete', (req, res) => {
+  const { ids } = req.body as { ids?: number[] }
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array' })
+  }
+  const stmt = db.prepare('DELETE FROM recipes WHERE id = ?')
+  let deleted = 0
+  for (const id of ids) deleted += Number(stmt.run(Number(id)).changes)
+  res.json({ deleted })
 })
 
 // Cronometer "export as CSV" (a recipe's nutrition breakdown, or a diary day)
@@ -1046,6 +1068,33 @@ app.post('/api/recipes/:id/import-cronometer', upload.single('file'), (req, res)
   )
   const row = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as unknown as RecipeRow
   res.json({ recipe: rowToRecipe(row), rowsRead, ...macros })
+})
+
+// --- Backup / Restore ------------------------------------------------------
+// Download selected tabs as one .xlsx workbook (?groups=budgets,planner,...).
+app.get('/api/export', (req, res) => {
+  const groups = parseGroups(req.query.groups)
+  const buf = buildBackup(groups)
+  const stamp = new Date().toISOString().slice(0, 10)
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  res.setHeader('Content-Disposition', `attachment; filename="budgets-backup-${stamp}.xlsx"`)
+  res.send(buf)
+})
+
+// Restore a backup file: REPLACES all data in whichever selected tabs are
+// present in the file. Tabs not selected (or not in the file) are untouched.
+app.post('/api/import-backup', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no file uploaded' })
+  const groups = parseGroups((req.body as { groups?: string }).groups)
+  try {
+    const restored = restoreBackup(req.file.buffer, groups)
+    res.json({ ok: true, restored })
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message || 'could not read this backup file' })
+  }
 })
 
 app.listen(PORT, () => {

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Link, Route, Routes } from 'react-router-dom'
+import BackupRestore from './components/BackupRestore'
 import Home from './pages/Home'
 import BudgetView from './pages/BudgetView'
 import Planner from './pages/Planner'
@@ -9,6 +11,7 @@ import Recipes from './pages/Recipes'
 import RecipeView from './pages/RecipeView'
 
 export default function App() {
+  const [backupOpen, setBackupOpen] = useState(false)
   return (
     <div className="min-h-full">
       <header className="border-b border-slate-200 bg-white print:hidden">
@@ -33,9 +36,17 @@ export default function App() {
             <Link to="/recipes" className="text-slate-500 hover:text-ink">
               🍽️ Food Recipes
             </Link>
+            <button
+              onClick={() => setBackupOpen(true)}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-100"
+            >
+              💾 Backup
+            </button>
           </nav>
         </div>
       </header>
+
+      {backupOpen && <BackupRestore onClose={() => setBackupOpen(false)} />}
       <main className="mx-auto max-w-6xl px-4 py-6">
         <Routes>
           <Route path="/" element={<Home />} />

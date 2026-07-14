@@ -154,6 +154,26 @@ export const api = {
   kpis: (id: number, filters: TxnFilters = {}) =>
     fetch(`/api/budgets/${id}/kpis${qs(filters)}`).then(json<Kpis>),
 
+  // Earliest / latest transaction dates for this budget (ignores filters).
+  dateRange: (id: number) =>
+    fetch(`/api/budgets/${id}/date-range`).then(
+      json<{ min: string | null; max: string | null; count: number }>,
+    ),
+
+  // --- Backup / Restore ---
+  // A direct download URL for the selected tabs (used by an <a download>).
+  exportUrl: (groups: string[]) =>
+    `/api/export${groups.length ? `?groups=${encodeURIComponent(groups.join(','))}` : ''}`,
+
+  importBackup: (file: File, groups: string[]) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('groups', groups.join(','))
+    return fetch('/api/import-backup', { method: 'POST', body: fd }).then(
+      json<{ ok: boolean; restored: Record<string, number> }>,
+    )
+  },
+
   // --- Budget Planner ---
   planner: () => fetch('/api/planner').then(json<PlannerItem[]>),
 
@@ -260,20 +280,36 @@ export const api = {
 
   getRecipe: (id: number) => fetch(`/api/recipes/${id}`).then(json<Recipe>),
 
-  recipeImageUrl: (id: number) => `/api/recipes/${id}/image`,
+  // Pass a `version` (e.g. a timestamp) after saving a new photo so the URL
+  // changes and the browser fetches the fresh image instead of a cached one.
+  recipeImageUrl: (id: number, version?: number) =>
+    `/api/recipes/${id}/image${version ? `?v=${version}` : ''}`,
 
   createRecipe: (data: RecipeInput, image?: File | null) => {
     const fd = recipeFormData(data, image)
     return fetch('/api/recipes', { method: 'POST', body: fd }).then(json<Recipe>)
   },
 
-  updateRecipe: (id: number, data: Partial<RecipeInput>, image?: File | null) => {
+  updateRecipe: (
+    id: number,
+    data: Partial<RecipeInput>,
+    image?: File | null,
+    removeImage = false,
+  ) => {
     const fd = recipeFormData(data, image)
+    if (removeImage && !image) fd.append('remove_image', '1')
     return fetch(`/api/recipes/${id}`, { method: 'PATCH', body: fd }).then(json<Recipe>)
   },
 
   deleteRecipe: (id: number) =>
     fetch(`/api/recipes/${id}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
+
+  bulkDeleteRecipes: (ids: number[]) =>
+    fetch('/api/recipes/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }).then(json<{ deleted: number }>),
 
   importCronometer: (id: number, file: File) => {
     const fd = new FormData()

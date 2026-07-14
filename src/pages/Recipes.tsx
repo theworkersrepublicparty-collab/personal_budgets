@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, type RecipeInput } from '../lib/api'
 import type { Recipe, RecipeCategory } from '../../shared/types'
+import RecipePhotoField from '../components/RecipePhotoField'
 
 const CATEGORIES: { key: RecipeCategory; label: string; emoji: string }[] = [
   { key: 'breakfast', label: 'Breakfast', emoji: '🍳' },
@@ -17,6 +18,10 @@ export default function Recipes() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
   const [panel, setPanel] = useState<'add' | 'import' | null>(null)
+  // Select mode + the ids picked. selectedIds is page-level so choices persist
+  // as you switch category tabs — then one Delete removes them all at once.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -31,6 +36,28 @@ export default function Recipes() {
 
   const toggle = (p: 'add' | 'import') => setPanel((cur) => (cur === p ? null : p))
 
+  function toggleRecipe(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function exitSelect() {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  async function deleteSelected() {
+    const n = selectedIds.size
+    if (!n) return
+    if (!confirm(`Delete ${n} selected recipe(s) across all categories? This cannot be undone.`)) return
+    await api.bulkDeleteRecipes([...selectedIds])
+    exitSelect()
+    load()
+  }
+
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -39,6 +66,17 @@ export default function Recipes() {
           <p className="text-sm text-slate-400">Each category keeps its own list — search only looks within the tab you're on.</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+            className={
+              'rounded-lg border px-4 py-2 text-sm font-semibold ' +
+              (selectMode
+                ? 'border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                : 'border-slate-300 text-slate-600 hover:bg-slate-100')
+            }
+          >
+            {selectMode ? 'Done' : '☑ Select'}
+          </button>
           <button
             onClick={() => toggle('import')}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
@@ -53,6 +91,31 @@ export default function Recipes() {
           </button>
         </div>
       </div>
+
+      {/* Bulk action bar — visible while selecting. Selections persist across tabs. */}
+      {selectMode && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm">
+          <span className="font-semibold text-indigo-900">
+            {selectedIds.size} selected
+          </span>
+          <span className="text-slate-500">
+            Tap cards to pick them — your picks stay as you switch category tabs.
+          </span>
+          <button
+            onClick={deleteSelected}
+            disabled={selectedIds.size === 0}
+            className="ml-auto rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-money-out hover:bg-red-50 disabled:opacity-40"
+          >
+            🗑 Delete {selectedIds.size || ''}
+          </button>
+          <button
+            onClick={exitSelect}
+            className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-white"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Category tabs — each is a self-contained list */}
       <div className="mb-4 flex gap-1 border-b border-slate-200">
@@ -112,7 +175,13 @@ export default function Recipes() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {recipes.map((r) => (
-            <RecipeCard key={r.id} recipe={r} />
+            <RecipeCard
+              key={r.id}
+              recipe={r}
+              selectMode={selectMode}
+              selected={selectedIds.has(r.id)}
+              onToggle={toggleRecipe}
+            />
           ))}
         </div>
       )}
@@ -120,18 +189,37 @@ export default function Recipes() {
   )
 }
 
-function RecipeCard({ recipe }: { recipe: Recipe }) {
+function RecipeCard({
+  recipe,
+  selectMode,
+  selected,
+  onToggle,
+}: {
+  recipe: Recipe
+  selectMode: boolean
+  selected: boolean
+  onToggle: (id: number) => void
+}) {
   const emoji = CATEGORIES.find((c) => c.key === recipe.category)?.emoji ?? '🍽️'
-  return (
-    <Link
-      to={`/recipes/${recipe.id}`}
-      className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-sm"
-    >
-      <div className="flex h-36 items-center justify-center bg-slate-100">
+  const inner = (
+    <>
+      <div className="relative flex h-36 items-center justify-center bg-slate-100">
         {recipe.has_image ? (
           <img src={api.recipeImageUrl(recipe.id)} alt={recipe.title} className="h-full w-full object-cover" />
         ) : (
           <span className="text-4xl">{emoji}</span>
+        )}
+        {selectMode && (
+          <span
+            className={
+              'absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold ' +
+              (selected
+                ? 'border-indigo-600 bg-indigo-600 text-white'
+                : 'border-white bg-white/70 text-transparent')
+            }
+          >
+            ✓
+          </span>
         )}
       </div>
       <div className="p-4">
@@ -149,6 +237,33 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
           <Macro label="F" value={recipe.fats} color="text-sky-600" />
         </div>
       </div>
+    </>
+  )
+
+  // In select mode the whole card toggles selection instead of opening it.
+  if (selectMode) {
+    return (
+      <button
+        type="button"
+        onClick={() => onToggle(recipe.id)}
+        className={
+          'overflow-hidden rounded-xl border bg-white text-left transition ' +
+          (selected
+            ? 'border-indigo-500 ring-2 ring-indigo-300'
+            : 'border-slate-200 hover:border-slate-300')
+        }
+      >
+        {inner}
+      </button>
+    )
+  }
+
+  return (
+    <Link
+      to={`/recipes/${recipe.id}`}
+      className="overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-sm"
+    >
+      {inner}
     </Link>
   )
 }
@@ -224,15 +339,9 @@ function AddRecipe({
         <Field label="Protein (g)" value={f.protein} onChange={(v) => set('protein', v)} />
         <Field label="Carbs (g)" value={f.carbs} onChange={(v) => set('carbs', v)} />
         <Field label="Fats (g)" value={f.fats} onChange={(v) => set('fats', v)} />
-        <label className="flex flex-col">
-          <span className="mb-1 text-[11px] font-medium text-slate-500">Photo</span>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-            className="text-xs"
-          />
-        </label>
+      </div>
+      <div className="mt-3">
+        <RecipePhotoField currentUrl={null} onChange={(c) => setImage(c.file)} />
       </div>
       <label className="mt-3 flex flex-col">
         <span className="mb-1 text-[11px] font-medium text-slate-500">Description</span>

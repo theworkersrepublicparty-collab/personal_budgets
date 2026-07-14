@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, type RecipeInput } from '../lib/api'
 import type { Recipe, RecipeCategory } from '../../shared/types'
+import RecipePhotoField from '../components/RecipePhotoField'
 
 const CATEGORIES: { key: RecipeCategory; label: string; emoji: string }[] = [
   { key: 'breakfast', label: 'Breakfast', emoji: '🍳' },
@@ -17,6 +18,8 @@ export default function RecipeView() {
   const [recipe, setRecipe] = useState<Recipe | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
+  // Bumped after a save so a replaced photo shows immediately (busts the cache).
+  const [imgVersion, setImgVersion] = useState(0)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
 
@@ -65,10 +68,12 @@ export default function RecipeView() {
       {editing ? (
         <EditRecipe
           recipe={recipe}
+          imgVersion={imgVersion}
           onCancel={() => setEditing(false)}
           onSaved={(r) => {
             setRecipe(r)
             setEditing(false)
+            setImgVersion(Date.now()) // force the new photo to load
           }}
         />
       ) : (
@@ -102,14 +107,6 @@ export default function RecipeView() {
               </button>
             </div>
           </div>
-
-          {recipe.has_image && (
-            <img
-              src={api.recipeImageUrl(recipe.id)}
-              alt={recipe.title}
-              className="mb-5 max-h-96 w-full rounded-xl border border-slate-200 object-cover print:max-h-64"
-            />
-          )}
 
           <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 print:grid-cols-5 print:gap-2">
             <Stat label="Cook time" value={recipe.cook_time > 0 ? `${recipe.cook_time} min` : '—'} />
@@ -146,6 +143,17 @@ export default function RecipeView() {
             {importing && <p className="mt-2 text-xs text-slate-400">Importing…</p>}
             {importMsg && <p className="mt-2 text-xs text-slate-600">{importMsg}</p>}
           </div>
+
+          {recipe.has_image && (
+            <div className="mt-5">
+              <h2 className="mb-2 text-sm font-semibold text-slate-600 print:hidden">Photo</h2>
+              <img
+                src={api.recipeImageUrl(recipe.id, imgVersion)}
+                alt={recipe.title}
+                className="aspect-[3/2] w-full max-w-2xl rounded-xl border border-slate-200 object-cover print:aspect-auto print:max-h-64"
+              />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -163,10 +171,12 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
 
 function EditRecipe({
   recipe,
+  imgVersion,
   onCancel,
   onSaved,
 }: {
   recipe: Recipe
+  imgVersion: number
   onCancel: () => void
   onSaved: (r: Recipe) => void
 }) {
@@ -182,6 +192,7 @@ function EditRecipe({
     instructions: recipe.instructions,
   })
   const [image, setImage] = useState<File | null>(null)
+  const [removeImage, setRemoveImage] = useState(false)
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }))
   const num = (v: string) => parseFloat(v) || 0
 
@@ -199,7 +210,7 @@ function EditRecipe({
       description: f.description,
       instructions: f.instructions,
     }
-    const updated = await api.updateRecipe(recipe.id, data, image)
+    const updated = await api.updateRecipe(recipe.id, data, image, removeImage)
     onSaved(updated)
   }
 
@@ -227,15 +238,15 @@ function EditRecipe({
         <Field label="Protein (g)" value={f.protein} onChange={(v) => set('protein', v)} />
         <Field label="Carbs (g)" value={f.carbs} onChange={(v) => set('carbs', v)} />
         <Field label="Fats (g)" value={f.fats} onChange={(v) => set('fats', v)} />
-        <label className="flex flex-col">
-          <span className="mb-1 text-[11px] font-medium text-slate-500">Replace photo</span>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-            className="text-xs"
-          />
-        </label>
+      </div>
+      <div className="mt-3">
+        <RecipePhotoField
+          currentUrl={recipe.has_image ? api.recipeImageUrl(recipe.id, imgVersion) : null}
+          onChange={(c) => {
+            setImage(c.file)
+            setRemoveImage(c.remove)
+          }}
+        />
       </div>
       <label className="mt-3 flex flex-col">
         <span className="mb-1 text-[11px] font-medium text-slate-500">Description</span>

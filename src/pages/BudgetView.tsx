@@ -9,7 +9,7 @@ import CategoryManager from '../components/CategoryManager'
 import RulesManager from '../components/RulesManager'
 import ImportWizard from '../components/ImportWizard'
 import { CategoryChart, MonthlyByCategoryChart, MonthlyChart } from '../components/Charts'
-import { money } from '../lib/format'
+import { money, shortDate } from '../lib/format'
 
 // Starter category list used until the user saves their own.
 const DEFAULT_CATEGORIES = [
@@ -33,6 +33,10 @@ export default function BudgetView() {
   const [budget, setBudget] = useState<Budget | null>(null)
   const [txns, setTxns] = useState<Transaction[]>([])
   const [kpis, setKpis] = useState<Kpis | null>(null)
+  const [dateRange, setDateRange] = useState<{ min: string | null; max: string | null }>({
+    min: null,
+    max: null,
+  })
   const [filters, setFilters] = useState<TxnFilters>({})
   const [importing, setImporting] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -65,14 +69,16 @@ export default function BudgetView() {
   )
 
   const load = useCallback(async () => {
-    const [b, t, k] = await Promise.all([
+    const [b, t, k, dr] = await Promise.all([
       api.getBudget(budgetId),
       api.transactions(budgetId, filters),
       api.kpis(budgetId, filters),
+      api.dateRange(budgetId),
     ])
     setBudget(b)
     setTxns(t)
     setKpis(k)
+    setDateRange({ min: dr.min, max: dr.max })
     setSelectedIds(new Set())
     setLoading(false)
   }, [budgetId, filters])
@@ -261,14 +267,26 @@ export default function BudgetView() {
         <span className="self-end pb-1.5 text-xs text-slate-400">
           Tip: filter by date range here; filter Description / Category right in the table headers.
         </span>
-        {Object.values(filters).some(Boolean) && (
-          <button
-            onClick={() => setFilters({})}
-            className="ml-auto rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
-          >
-            Reset filters
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-2 self-end pb-0.5">
+          {dateRange.max && (
+            <button
+              onClick={() => patch({ from: dateRange.max ?? undefined })}
+              title="Your newest transaction. Click to set the From date to it."
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+            >
+              🗓 Latest transaction:{' '}
+              <span className="font-semibold text-ink">{shortDate(dateRange.max)}</span>
+            </button>
+          )}
+          {Object.values(filters).some(Boolean) && (
+            <button
+              onClick={() => setFilters({})}
+              className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+            >
+              Reset filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Analytics — collapsible so you can expand the charts or hide them to
