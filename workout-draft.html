@@ -1,0 +1,1806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workout Tab — Draft 1</title>
+<script src="./node_modules/xlsx/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b21; --panel2:#1e2430; --border:#2a3140;
+    --text:#e7ebf0; --muted:#8b96a5; --accent:#4fb0ff; --accent2:#37d99a;
+    --warn:#ffb454; --danger:#ff6b6b; --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding:20px 24px 80px;
+  }
+  h1,h2,h3,h4{margin:0 0 8px;}
+  .draft-banner{
+    background:#3a2a10; border:1px solid var(--warn); color:var(--warn);
+    padding:8px 14px; border-radius:8px; font-size:13px; margin-bottom:18px;
+  }
+  /* ---------- TOOLBAR ---------- */
+  .toolbar{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin-bottom:18px; flex-wrap:wrap;
+  }
+  .toolbar .left-actions{display:flex; gap:10px; flex-wrap:wrap;}
+
+  /* ---------- KPI BAR ---------- */
+  .kpi-bar{
+    display:flex; gap:14px; flex-wrap:wrap; align-items:stretch; margin-bottom:22px;
+  }
+  .kpi{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px 18px; min-width:130px; flex:1;
+  }
+  .kpi .label{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);}
+  .kpi .value{font-size:24px; font-weight:600; margin-top:4px;}
+  .kpi .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+  button{
+    font-family:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); padding:8px 14px; font-size:13px;
+  }
+  button:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#08202f; font-weight:600;}
+  button.primary:hover{filter:brightness(1.08);}
+  button.subtle{background:transparent; border-color:transparent; color:var(--muted); padding:4px 8px;}
+  button.subtle:hover{color:var(--text);}
+  button.danger-outline{border-color:var(--danger); color:var(--danger); background:transparent;}
+  button.small{padding:4px 10px; font-size:12px;}
+
+  /* ---------- MODAL ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+    align-items:center; justify-content:center; z-index:100;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    width:min(520px,92vw); max-height:85vh; overflow:auto; padding:20px 22px;
+  }
+  .modal label{display:block; font-size:12px; color:var(--muted); margin:12px 0 4px;}
+  .modal input, .modal select{
+    width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:8px 10px; font-size:14px;
+  }
+  .modal .explain{
+    background:var(--panel2); border-left:3px solid var(--accent); padding:10px 12px;
+    font-size:12.5px; color:var(--muted); border-radius:6px; margin-top:14px; line-height:1.5;
+  }
+  .modal-footer{display:flex; justify-content:flex-end; gap:10px; margin-top:18px;}
+
+  /* ---------- SECTION ---------- */
+  .section{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px 20px; margin-bottom:22px;
+  }
+  .section-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+
+  /* ---------- CALENDAR ---------- */
+  .cal-nav{display:flex; align-items:center; gap:12px;}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
+  .cal-dow{text-align:center; font-size:11px; color:var(--muted); padding:4px 0;}
+  .cal-day{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    min-height:64px; padding:6px; font-size:12px; cursor:pointer; position:relative;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .cal-day:hover{border-color:var(--accent);}
+  .cal-day.empty{background:transparent; border-color:transparent; cursor:default;}
+  .cal-day.today{border-color:var(--accent2);}
+  .cal-day .num{color:var(--muted); font-size:11px;}
+  .cal-day .tag{
+    background:rgba(79,176,255,.15); color:var(--accent); border-radius:5px;
+    padding:2px 5px; font-size:10.5px; line-height:1.3; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  /* ---------- CATEGORY TABS ---------- */
+  .tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; align-items:center;}
+  .tab-btn{
+    padding:8px 16px; border-radius:20px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--muted); font-size:13px;
+  }
+  .tab-btn.active{background:var(--accent); color:#08202f; border-color:var(--accent); font-weight:600;}
+
+  /* ---------- PROGRAM / WORKOUT CARDS ---------- */
+  .program-card{
+    background:var(--panel2); border:1px solid var(--border); border-radius:var(--radius);
+    margin-bottom:14px; overflow:hidden;
+  }
+  .card-header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 16px; cursor:pointer;
+  }
+  .card-header h3{font-size:15px;}
+  .card-header .name-input{
+    background:transparent; border:none; color:var(--text); font-size:15px; font-weight:600;
+    padding:2px 4px; border-radius:4px;
+  }
+  .card-header .name-input:hover, .card-header .name-input:focus{background:var(--panel);}
+  .caret{transition:transform .15s; color:var(--muted); font-size:12px;}
+  .program-card.collapsed .caret, .workout-card.collapsed .caret{transform:rotate(-90deg);}
+  .card-body{padding:0 16px 16px;}
+  .program-card.collapsed .card-body, .workout-card.collapsed .card-body{display:none;}
+
+  .workout-card{
+    background:var(--bg); border:1px solid var(--border); border-radius:10px;
+    margin:10px 0; overflow:hidden;
+  }
+  .workout-card .card-header{padding:12px 14px;}
+  .workout-card .card-body{padding:0 14px 14px;}
+
+  .field-row{margin-top:12px;}
+  .field-label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:4px;}
+  .field-value{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; font-size:12.5px; line-height:1.5; cursor:text;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .field-value:hover{border-color:var(--accent);}
+  .field-value input, .field-value textarea{
+    width:100%; background:transparent; border:none; color:var(--text);
+    font-size:12.5px; font-family:inherit; resize:vertical; padding:0;
+  }
+  .field-value input:focus, .field-value textarea:focus{outline:none;}
+
+  table.worksheet{width:100%; border-collapse:collapse; margin-top:12px; font-size:12.5px;}
+  table.worksheet th, table.worksheet td{
+    border:1px solid var(--border); padding:6px 8px; text-align:left; vertical-align:middle;
+  }
+  table.worksheet th{background:var(--panel2); color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em;}
+  table.worksheet td.settype{white-space:nowrap;}
+  table.worksheet td.settype input{color:var(--accent2); font-weight:600;}
+  table.worksheet input{
+    width:100%; background:transparent; border:none; color:var(--text); font-size:12.5px; padding:2px;
+  }
+  table.worksheet input:focus{background:var(--panel2); border-radius:4px;}
+  table.worksheet input.reps-input{width:44px; display:inline-block; color:var(--muted);}
+  .cell-pair{display:flex; gap:4px; align-items:center;}
+  .cell-pair .r{color:var(--muted); font-size:11px;}
+  .row-actions{white-space:nowrap;}
+
+  .card-actions{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;}
+  .action-group{margin-top:14px;}
+  .action-group-label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:4px;}
+  .action-group .card-actions{margin-top:0;}
+
+  .exercise-row-add{margin-top:8px;}
+
+  .assign-popover{
+    position:absolute; background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; padding:12px; z-index:50; width:260px; box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  .assign-popover h4{font-size:13px; margin-bottom:8px;}
+  .assign-popover select{width:100%; margin-bottom:8px;}
+  .assign-popover .close-x{position:absolute; top:8px; right:10px; cursor:pointer; color:var(--muted); font-size:14px;}
+
+  .day-panel{
+    background:var(--panel2); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; margin-top:14px;
+  }
+  .day-panel h4{font-size:14px; margin-bottom:8px;}
+  .day-panel .existing-list{display:flex; flex-direction:column; gap:6px; margin-bottom:10px;}
+  .day-panel .existing-list .item{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:13px;
+  }
+  .empty-note{color:var(--muted); font-size:12px; font-style:italic;}
+
+  select{
+    font-family:inherit; background:var(--panel2); border:1px solid var(--border);
+    color:var(--text); border-radius:8px; padding:6px 8px; font-size:13px;
+  }
+
+  /* ---------- HISTORY (per-workout card) ---------- */
+  .history-panel{margin-top:16px; padding-top:14px; border-top:1px dashed var(--border);}
+  .history-entry{
+    display:inline-block; background:var(--panel2); border:1px solid var(--border);
+    border-radius:20px; padding:6px 14px; margin:0 6px 6px 0; cursor:pointer; font-size:12.5px;
+  }
+  .history-entry:hover{border-color:var(--accent);}
+  .history-entry.active{background:var(--accent); border-color:var(--accent); color:#08202f; font-weight:600;}
+
+  .compare-hint{font-size:10.5px; color:var(--accent2); margin-top:3px;}
+
+  .log-count-badge{
+    background:var(--panel2); border:1px solid var(--border); border-radius:20px;
+    padding:2px 9px; font-size:11px; color:var(--accent2); white-space:nowrap;
+  }
+  .switch{position:relative; display:inline-block; width:36px; height:20px; flex-shrink:0;}
+  .switch input{opacity:0; width:0; height:0;}
+  .switch .slider{
+    position:absolute; cursor:pointer; inset:0; background:var(--panel2);
+    border:1px solid var(--border); border-radius:20px; transition:.15s;
+  }
+  .switch .slider:before{
+    position:absolute; content:""; height:14px; width:14px; left:2px; top:2px;
+    background:var(--muted); border-radius:50%; transition:.15s;
+  }
+  .switch input:checked + .slider{background:rgba(55,217,154,.2); border-color:var(--accent2);}
+  .switch input:checked + .slider:before{transform:translateX(16px); background:var(--accent2);}
+
+  /* ---------- ANALYTICS ---------- */
+  .filter-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;}
+  .filter-row select{min-width:170px;}
+  .sparkline{
+    display:flex; align-items:flex-end; gap:10px; height:130px; padding:14px 12px 8px;
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px; overflow-x:auto;
+  }
+  .bar-col{display:flex; flex-direction:column; align-items:center; justify-content:flex-end; min-width:30px;}
+  .bar-col .bar{width:18px; background:var(--accent); border-radius:3px 3px 0 0;}
+  .bar-col .bar-label{font-size:9px; color:var(--muted); margin-top:5px; white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<div class="draft-banner">
+  Draft 1 — layout &amp; functionality sandbox for the Workout tab. Not wired into the real app. Data is saved only in this browser (localStorage) so you can safely click around.
+</div>
+
+<h1>Workout</h1>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <div class="left-actions">
+    <button class="tab-btn" data-main-view="workouts">Workouts</button>
+    <button class="tab-btn" data-main-view="analytics">Analytics</button>
+    <button class="tab-btn" data-main-view="logs">Logs</button>
+    <button class="primary" id="editGoalsBtn">Edit Goal</button>
+  </div>
+  <button id="downloadBtn">⬇ Download .xlsx</button>
+</div>
+
+<!-- KPI BAR -->
+<div class="kpi-bar" id="kpiBar"></div>
+
+<!-- WORKOUTS VIEW: calendar + category/program/workout browsing -->
+<div id="viewWorkouts">
+  <div class="section">
+    <div class="section-head">
+      <h2>Calendar</h2>
+      <div class="cal-nav">
+        <button class="subtle" id="calPrev">‹ Prev</button>
+        <strong id="calLabel">Month</strong>
+        <button class="subtle" id="calNext">Next ›</button>
+      </div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div id="dayPanelHost"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>Workouts</h2>
+    </div>
+    <div class="tabs" id="categoryTabs"></div>
+    <div id="categoryContent"></div>
+  </div>
+</div>
+
+<!-- ANALYTICS VIEW -->
+<div id="viewAnalytics">
+  <div class="section">
+    <div class="section-head">
+      <h2>Analytics</h2>
+    </div>
+    <div class="filter-row" id="analyticsFilters"></div>
+    <div id="analyticsBody"></div>
+  </div>
+</div>
+
+<!-- LOGS VIEW: every logged session, viewable and editable -->
+<div id="viewLogs">
+  <div class="section">
+    <div class="section-head">
+      <h2>Logged Sessions</h2>
+    </div>
+    <div id="logsList"></div>
+  </div>
+</div>
+
+<!-- EDIT GOALS MODAL -->
+<div class="modal-overlay" id="goalsModal">
+  <div class="modal">
+    <h3>Edit Goals &amp; Stats</h3>
+    <label>Current weight (lbs)</label>
+    <input type="number" id="inWeight" step="0.1">
+    <label>Goal weight (lbs)</label>
+    <input type="number" id="inGoal" step="0.1">
+    <label>Height (inches)</label>
+    <input type="number" id="inHeight" step="0.1">
+    <div class="explain">
+      <strong>How this is calculated:</strong><br>
+      • <strong>BMI</strong> = (weight in lbs ÷ (height in inches)²) × 703.<br>
+      • <strong>To goal</strong> = current weight − goal weight. Positive means lbs left to lose, negative means lbs left to gain.<br>
+      • BMI categories shown are the standard CDC bands: &lt;18.5 underweight, 18.5–24.9 normal, 25–29.9 overweight, 30+ obese. This is a general population metric — it doesn't account for muscle mass, so treat it as a rough signal, not a target.
+    </div>
+    <div class="modal-footer">
+      <button class="subtle" id="goalsCancel">Cancel</button>
+      <button class="primary" id="goalsSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== STORAGE ===================== */
+const STORE_KEY = 'workoutDraft_v1';
+
+function cellsFor(...reps){
+  return reps.map(r=>({reps:r, weight:''}));
+}
+
+// Default Body Beast worksheets (transcribed from the Beachbody PDF worksheet
+// the user pasted in). "Sets" here are the reps-progression columns within a
+// single workout (e.g. 15/12/8/8), not calendar weeks.
+function defaultBodyBeastWorkouts(){
+  const SET4 = ['Set 1 (15 reps)','Set 2 (12 reps)','Set 3 (8 reps)','Set 4 (8 reps)'];
+  const SET3 = ['Set 1 (15 reps)','Set 2 (12 reps)','Set 3 (8 reps)'];
+  const PYRAMID6 = ['Set 1 (15 reps)','Set 2 (12 reps)','Set 3 (8 reps)','Set 4 (8 reps)','Set 5 (12 reps)','Set 6 (15 reps)'];
+  const CIRCUIT7 = ['Circuit 1','Circuit 2','Circuit 3','Circuit 4','Circuit 5','Circuit 6','Circuit 7'];
+  const STD_NOTE = 'Weights listed are suggestions only. Use weights appropriate to your personal fitness and strength level. Start lighter to reduce injury risk.';
+
+  return [
+    {
+      id:'beast-total-body', name:'Beast: Total Body',
+      equipment:['Bench (or Stability Ball)','Chin-Up Bar (or Bands With Door Attachment)','Chin-Up Max * (and Sturdy Chair)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'30 lbs., 40 lbs., 50 lbs.', notes:STD_NOTE, weeks:SET4.slice(),
+      groups:[
+        { type:'Circuit Set', exercises:[
+          { name:'Pull-Up', cells:cellsFor('15','12','8','8') },
+          { name:'Push-Up', cells:cellsFor('15','12','8','8') },
+          { name:'Squat', cells:cellsFor('15','12','8','8') },
+          { name:'Crunch', cells:cellsFor('15','12','8','8') },
+        ]},
+        { type:'Circuit Set', exercises:[
+          { name:'Incline Press', cells:cellsFor('15','12','8','8') },
+          { name:'Bent-Over Row', cells:cellsFor('15','12','8','8') },
+          { name:'Reverse Alternating Lunge', cells:cellsFor('15','12','8','8') },
+          { name:'Plank w/ Twist', cells:cellsFor('15','12','8','8') },
+        ]},
+        { type:'Circuit Set', exercises:[
+          { name:'1,1,2 Military Press', cells:cellsFor('15','12','8','8') },
+          { name:'Rear Delt Raise', cells:cellsFor('15','12','8','8') },
+          { name:'Stiff Leg Deadlift', cells:cellsFor('15','12','8','8') },
+          { name:'Russian Twist', cells:cellsFor('15','12','8','8') },
+        ]},
+        { type:'Circuit Set', exercises:[
+          { name:'Bicep Curl-Up-Hammer Down', cells:cellsFor('15','12','8','8') },
+          { name:'Tricep Extension-Kickback', cells:cellsFor('15','12','8','8') },
+          { name:'Calf Raise-Weight at Shoulder', cells:cellsFor('15','12','8','8') },
+          { name:'Side Forearm Plank', cells:cellsFor('15','12','8','8') },
+        ]},
+      ]
+    },
+    {
+      id:'build-back-bis', name:'Build: Back/Bis',
+      equipment:['Bench (or Stability Ball)','Chin-Up Bar (or Bands With Door Attachment)','Chin-Up Max * (and Sturdy Chair)','Weights','EZ Curl Bar W/Weighted Plates (And Spring Collars)','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'8 lbs., 15 lbs., 20 lbs.', notes:STD_NOTE, weeks:SET4.slice(),
+      groups:[
+        { type:'Single Set', exercises:[{ name:'Deadlift', cells:cellsFor('15','12','8','8') }]},
+        { type:'Super Set', exercises:[
+          { name:'Dumbbell Pull-Over', cells:cellsFor('15','12','8','8') },
+          { name:'Pull-Up', cells:cellsFor('10','10','10','10') },
+        ]},
+        { type:'Giant Set', exercises:[
+          { name:'EZ Bar Row', cells:cellsFor('15','12','8','8') },
+          { name:'One-Arm Row', cells:cellsFor('15','12','8','8') },
+          { name:'Reverse Fly', cells:cellsFor('15','12','8','8') },
+        ]},
+        { type:'Single Set', exercises:[{ name:'Close-Grip Chin-Up', cells:cellsFor('30 Sec.','30 Sec.','30 Sec.','8') }]},
+        { type:'Single Set', exercises:[{ name:'Seated Bicep Curl', cells:cellsFor('15','12','8','8') }]},
+        { type:'Single Set', exercises:[{ name:'1,1,2 Hammer Curl', cells:cellsFor('15','12','8','8') }]},
+        { type:'Single Set', exercises:[{ name:'Neutral EZ Bar Curl', cells:cellsFor('15','12','8','8') }]},
+        { type:'Single Set', exercises:[{ name:'Airplane Cobra', cells:cellsFor('30 Sec.','30 Sec.','8 Sec.','8') }]},
+      ]
+    },
+    {
+      id:'build-chest-tris', name:'Build: Chest/Tris',
+      equipment:['Bench (or Stability Ball)','Sturdy Chair','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'8 lbs., 15 lbs., 20 lbs.', notes:STD_NOTE, weeks:SET4.slice(),
+      groups:[
+        { type:'Single Set', exercises:[
+          { name:'Dumbbell Chest Press', cells:cellsFor('15','12','8','8') }
+        ]},
+        { type:'Super Set', exercises:[
+          { name:'Incline Dumbbell Fly', cells:cellsFor('15','12','8','8') },
+          { name:'Incline Dumbbell Press', cells:cellsFor('15','12','8','8') }
+        ]},
+        { type:'Giant Set', exercises:[
+          { name:'Close Grip Press', cells:cellsFor('15','12','8','8') },
+          { name:'Partial Chest Fly', cells:cellsFor('15','12','8','8') },
+          { name:'Decline Push-Up', cells:[{reps:'15',weight:'LT/RT'},{reps:'12',weight:'LT/RT'},{reps:'8',weight:'LT/RT'},{reps:'8',weight:'LT/RT'}] }
+        ]},
+        { type:'Single Set', exercises:[
+          { name:'Tricep Extension', cells:[{reps:'60 Sec.',weight:''},{reps:'',weight:''},{reps:'',weight:''},{reps:'',weight:''}] }
+        ]},
+        { type:'Super Set', exercises:[
+          { name:'Single Arm Kickback', cells:cellsFor('15','12','8','8') },
+          { name:'Tricep Push-Up', cells:cellsFor('15','12','8','8') }
+        ]},
+        { type:'Super Set', exercises:[
+          { name:'Dips on Bench', cells:cellsFor('15','12','8','8') },
+          { name:'In and Outs', cells:cellsFor('15','12','8','8') }
+        ]}
+      ]
+    },
+    {
+      id:'build-legs', name:'Build: Legs',
+      equipment:['Bench (or Stability Ball)','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'8 lbs., 15 lbs., 20 lbs.', notes:STD_NOTE, weeks:SET3.slice(),
+      groups:[
+        { type:'Single Set', exercises:[{ name:'Sumo Squat', cells:cellsFor('15','12','8') }]},
+        { type:'Super Set', exercises:[
+          { name:'Alternating Lunge', cells:cellsFor('15','12','8') },
+          { name:'Step-Up to Reverse Lunge', cells:cellsFor('15','12','8') },
+        ]},
+        { type:'Giant Set', exercises:[
+          { name:'Parallel Squat', cells:cellsFor('15','12','8') },
+          { name:'Bulgarian Squat', cells:cellsFor('15','12','8') },
+          { name:'Straight Leg Deadlift', cells:cellsFor('15','12','8') },
+        ]},
+        { type:'Giant Set', exercises:[
+          { name:'Single Leg Calf Raise', cells:cellsFor('15','12','8') },
+          { name:'Seated Calf Raise', cells:cellsFor('15','12','8') },
+          { name:'In and Outs', cells:cellsFor('30 Sec.','30 Sec.','8') },
+        ]},
+      ]
+    },
+    {
+      id:'build-shoulders', name:'Build: Shoulders',
+      equipment:['Bench (or Stability Ball)','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'8 lbs., 15 lbs., 20 lbs.', notes:STD_NOTE, weeks:SET3.slice(),
+      groups:[
+        { type:'Single Set', exercises:[{ name:'Shoulder Press', cells:cellsFor('15','12','8') }]},
+        { type:'Super Set', exercises:[
+          { name:'Lateral Raise', cells:cellsFor('15','12','8') },
+          { name:'Upright Row', cells:cellsFor('15','12','8') },
+        ]},
+        { type:'Giant Set', exercises:[
+          { name:'EZ Bar Underhand Press', cells:cellsFor('15','12','8') },
+          { name:'1,1,2 Front Raise', cells:cellsFor('15','12','8') },
+          { name:'Rear Delt Raise', cells:cellsFor('15','12','8') },
+        ]},
+        { type:'Super Set', exercises:[
+          { name:'Standing Dumbbell Shrug', cells:cellsFor('15','12','8') },
+          { name:'Dumbbell Scap Trap', cells:cellsFor('12','12','8') },
+        ]},
+        { type:'Super Set', exercises:[
+          { name:'Sagi Six-Way', cells:cellsFor('15','15','8') },
+          { name:'Tuck & Roll', cells:cellsFor('15','15','8') },
+        ]},
+      ]
+    },
+    {
+      id:'bulk-arms', name:'Bulk: Arms',
+      equipment:['Bench (or Stability Ball)','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'25 lbs., 35 lbs., 45 lbs.', notes:STD_NOTE, weeks:PYRAMID6.slice(),
+      groups:[
+        { type:'Progressive Set', exercises:[{ name:'Standing Curl', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Single Set', exercises:[{ name:'Tricep Extension', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Force Set', exercises:[{ name:'Wide EZ Bar Curl', cells:cellsFor('5','5','5','5','5','5') }]},
+        { type:'Single Set', exercises:[{ name:'Skull Crusher', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Progressive Set', exercises:[{ name:'Hammer Curl', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Progressive Set', exercises:[{ name:'Tricep Kickback', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Single Set', exercises:[{ name:'Weighted Crunch', cells:cellsFor('30','8','8','8','12','15') }]},
+      ]
+    },
+    {
+      id:'bulk-back', name:'Bulk: Back',
+      equipment:['Bench (or Stability Ball)','Chin-Up Bar (or Bands With Door Attachment)','Chin-Up Max * (and Sturdy Chair)','Weights','E-Z Curl Bar w/Weighted Plates (and Spring Collars)','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'25 lbs., 35 lbs., 45 lbs.', notes:STD_NOTE, weeks:PYRAMID6.slice(),
+      groups:[
+        { type:'Super Set', exercises:[
+          { name:'Pull-Over', cells:cellsFor('15','12','8','8','12','15') },
+          { name:'Pull-Up', cells:cellsFor('10','10','10','10','10','10') },
+        ]},
+        { type:'Progressive Set', exercises:[{ name:'Reverse Grip Row', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Force Set', exercises:[{ name:'One-Arm Row', cells:cellsFor('5','5','5','5','5','5') }]},
+        { type:'Single Set', exercises:[{ name:'Deadlift', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Super Set', exercises:[
+          { name:'Reverse Fly', cells:cellsFor('15','12','8','8','12','15') },
+          { name:'Plank Rotation', cells:cellsFor('30 Sec.','30 Sec.','8','8','12','15') },
+        ]},
+      ]
+    },
+    {
+      id:'bulk-chest', name:'Bulk: Chest',
+      equipment:['Bench (or Stability Ball)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'25 lbs., 35 lbs., 45 lbs.', notes:STD_NOTE, weeks:PYRAMID6.slice(),
+      groups:[
+        { type:'Super Set', exercises:[
+          { name:'Incline Fly', cells:cellsFor('15','12','8','8','12','15') },
+          { name:'Incline Press', cells:cellsFor('15','12','8','8','12','15') },
+        ]},
+        { type:'Force Set', exercises:[{ name:'Chest Press w/ Rotation', cells:cellsFor('5','5','5','5','5','5') }]},
+        { type:'Progressive Set', exercises:[{ name:'Flat Press', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Combo Set', exercises:[{ name:'Close-Grip Press to Fly', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Multi Set', exercises:[
+          { name:'Decline Push-Up', cells:cellsFor('15','12','8','8','12','15') },
+          { name:'Cobra to Airplane', cells:cellsFor('10','10','8','8','5','5') },
+          { name:'Russian Twist', cells:cellsFor('30 Sec.','30 Sec.','8','8','12','15') },
+        ]},
+      ]
+    },
+    {
+      id:'bulk-legs', name:'Bulk: Legs',
+      equipment:['Bench*','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'25 lbs., 35 lbs., 45 lbs.', notes:STD_NOTE, weeks:PYRAMID6.slice(),
+      groups:[
+        { type:'Single Set', exercises:[{ name:'Front to Back Lunge', cells:cellsFor('12','10','8','8','10','12') }]},
+        { type:'Progressive Set', exercises:[{ name:'Squat', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Force Set', exercises:[{ name:'Full to 1/2 Sumo Squat', cells:cellsFor('5','5','5','5','5','5') }]},
+        { type:'Progressive Set', exercises:[{ name:'Split Squat w/ EZ Bar', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Super Set', exercises:[
+          { name:'Stiff Leg Deadlift', cells:cellsFor('15','12','8','8','12','15') },
+          { name:'Alt. Side Squat', cells:cellsFor('10','10','8','8','10','10') },
+        ]},
+        { type:'Super Set', exercises:[
+          { name:'Calf Raise', cells:cellsFor('50','50','8','8','12','15') },
+          { name:'Beast Abs', cells:cellsFor('30 Sec.','30 Sec.','8','8','12','15') },
+        ]},
+      ]
+    },
+    {
+      id:'bulk-shoulders', name:'Bulk: Shoulders',
+      equipment:['Bench (or Stability Ball)','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'25 lbs., 35 lbs., 45 lbs.', notes:STD_NOTE, weeks:PYRAMID6.slice(),
+      groups:[
+        { type:'Super Set', exercises:[
+          { name:'Lateral Raise', cells:cellsFor('15','12','8','8','12','15') },
+          { name:'Arnold Press', cells:cellsFor('15','12','8','8','12','15') },
+        ]},
+        { type:'Progressive Set', exercises:[{ name:'Upright Row', cells:cellsFor('15','12','8','8','12','15') }]},
+        { type:'Super Set', exercises:[
+          { name:'Alt. Front Raise', cells:cellsFor('10','10','8','8','10','10') },
+          { name:'Plate Twist-Twist', cells:cellsFor('15','12','8','8','12','15') },
+        ]},
+        { type:'Progressive Set', exercises:[{ name:'Reverse Fly', cells:cellsFor('10','10','8','8','12','15') }]},
+        { type:'Super Set', exercises:[
+          { name:'Superman Stretch', cells:cellsFor('30 Sec.','30 Sec.','8','8','12','15') },
+          { name:'Plank Twist-Twist', cells:cellsFor('30 Sec.','30 Sec.','8','8','12','15') },
+        ]},
+      ]
+    },
+    {
+      id:'lucky-7', name:'Lucky 7',
+      equipment:['EZ Curl Bar w/Weighted Plates (and Spring Collars) Or Weights','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'',
+      notes:'Circuit training format: run through all 7 combo exercises back-to-back for one circuit, rest briefly, then repeat for 7 total circuits.',
+      weeks:CIRCUIT7.slice(),
+      groups:[
+        { type:'Combo Set', exercises:[
+          { name:'EZ Push-Up + Clean + Squat', cells:cellsFor('R','R','R','R','R','R','R') },
+          { name:'Dead Lift + Bent-Over Row', cells:cellsFor('R','R','R','R','R','R','R') },
+          { name:'Skull Crusher + Press + Crunch', cells:cellsFor('R','R','R','R','R','R','R') },
+          { name:'Curl + Military Press + EZ Squat', cells:cellsFor('R','R','R','R','R','R','R') },
+          { name:'Delt Raise + Reverse Lunge', cells:cellsFor('R','R','R','R','R','R','R') },
+          { name:'Lat Oblique Twist', cells:cellsFor('R','R','R','R','R','R','R') },
+          { name:'Upright Row + Calf Raise', cells:cellsFor('R','R','R','R','R','R','R') },
+        ]},
+      ]
+    },
+    {
+      id:'tempo-back-bis', name:'Tempo: Back/Bis',
+      equipment:['Bench (or Stability Ball)','Chin-Up Bar (or Bands With Door Attachment)','Chin-Up Max * (and Sturdy Chair)','Weights','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'', notes:STD_NOTE, weeks:SET3.slice(),
+      groups:[
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Pull-Over', cells:cellsFor('15','12','8') },
+          { name:'Wide Plank In & Out', cells:cellsFor('10','10','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Pull-Up', cells:cellsFor('10','10','8') },
+          { name:'Hanging Circle', cells:cellsFor('10','10','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Reverse Bent-Over Row', cells:cellsFor('15','12','8') },
+          { name:'Lat Oblique Twist', cells:cellsFor('15','12','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Preacher Curl', cells:cellsFor('15','12','8') },
+          { name:'Hanging Curl', cells:cellsFor('15','12','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'All-Angle Bicep', cells:cellsFor('15','12','8') },
+          { name:'Speed Mountain Climber', cells:cellsFor('30 Sec.','30 Sec.','8') },
+        ]},
+      ]
+    },
+    {
+      id:'tempo-chest-tris', name:'Tempo: Chest/Tris',
+      equipment:['Bench (or Stability Ball)','Sturdy Chair','Weights','EZ Curl Bar w/Weighted Plates (and Spring Collars)','Worksheet and Pen','Water and Towel'],
+      weightSuggestions:'', notes:STD_NOTE, weeks:SET3.slice(),
+      groups:[
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Chest Press', cells:cellsFor('15','12','8') },
+          { name:'Figure 4 Crunch', cells:cellsFor('10','10','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Incline Press', cells:cellsFor('15','12','8') },
+          { name:'Cricket Crunch', cells:cellsFor('10','10','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Incline Fly', cells:cellsFor('15','12','8') },
+          { name:'Tempo Plank', cells:cellsFor('10','10','8') },
+        ]},
+        { type:'Tempo-Single Set', exercises:[
+          { name:'Skull Crusher', cells:cellsFor('15','12','8') },
+          { name:'EZ Bar Crunch', cells:cellsFor('10','10','8') },
+        ]},
+        { type:'Tempo-Super Set', exercises:[
+          { name:'Tricep Kickback', cells:cellsFor('15','12','8') },
+          { name:'Dips', cells:cellsFor('15','12','8') },
+          { name:'Plank Twist-Twist', cells:cellsFor('30 Sec.','10','8') },
+        ]},
+      ]
+    },
+  ];
+}
+
+function seedData(){
+  return {
+    stats:{ weight:185, goal:170, height:70 },
+    categories:[
+      {
+        id:'lifting', name:'Lifting',
+        programs:[
+          {
+            id:'body-beast', name:'Body Beast',
+            workouts: defaultBodyBeastWorkouts()
+          }
+        ]
+      },
+      { id:'cardio', name:'Cardio', programs:[] },
+      { id:'calisthenics', name:'Calisthenics', programs:[] }
+    ],
+    activeCategory:'lifting',
+    assignments:{}, // dateStr -> [workoutId, ...] (workoutId = "categoryId::programId::workoutId")
+    calendar:{ year:new Date(2026,0,1).getFullYear(), month:6 }, // July 2026 default per session date
+    openDayKey:null,
+    logs:[], // snapshots of a workout's reps/weight as actually done on a given date
+    analyticsFilters:{ category:'', program:'', workout:'', range:'all', exercise:'' },
+    activeMainView:'workouts'
+  };
+}
+
+// Adds any newly-introduced default Body Beast worksheets to an existing save
+// that doesn't have them yet (matched by id), without touching workouts the
+// user already has (including ones they've renamed or edited). If the user
+// has deleted the whole "lifting" category or "body-beast" program, that's
+// respected — nothing gets recreated.
+function mergeDefaultBodyBeastWorkouts(d){
+  const cat = d.categories.find(c=>c.id==='lifting');
+  const prog = cat?.programs.find(p=>p.id==='body-beast');
+  if(!prog) return;
+  const existingIds = new Set(prog.workouts.map(w=>w.id));
+  defaultBodyBeastWorkouts().forEach(w=>{
+    if(!existingIds.has(w.id)) prog.workouts.push(w);
+  });
+}
+
+// Relabels any leftover "Week N" column headers (from before the terminology
+// fix) to "Set N" on existing saved workouts/logs. Only touches the label
+// text, not the underlying reps/weight data.
+function relabelWeeksToSets(d){
+  const fix = (arr)=>{
+    if(!arr) return;
+    arr.forEach((label,i)=>{
+      if(typeof label === 'string' && /^week\b/i.test(label)){
+        arr[i] = label.replace(/^week\b/i, 'Set');
+      }
+    });
+  };
+  d.categories.forEach(cat=>cat.programs.forEach(prog=>prog.workouts.forEach(w=>fix(w.weeks))));
+  d.logs.forEach(log=>fix(log.weeks));
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw){
+      const d = JSON.parse(raw);
+      if(!d.logs) d.logs = [];
+      if(!d.analyticsFilters) d.analyticsFilters = { category:'', program:'', workout:'', range:'all', exercise:'' };
+      if(!d.activeMainView) d.activeMainView = 'workouts';
+      mergeDefaultBodyBeastWorkouts(d);
+      relabelWeeksToSets(d);
+      save(d);
+      return d;
+    }
+  }catch(e){}
+  const d = seedData();
+  save(d);
+  return d;
+}
+function save(d){ localStorage.setItem(STORE_KEY, JSON.stringify(d)); }
+
+let data = load();
+
+function uid(prefix){ return prefix+'-'+Math.random().toString(36).slice(2,9); }
+
+/* ===================== KPI BAR ===================== */
+function calcBMI(weight,height){
+  if(!weight || !height) return null;
+  return (weight / (height*height)) * 703;
+}
+function bmiLabel(bmi){
+  if(bmi==null) return '—';
+  if(bmi<18.5) return 'Underweight';
+  if(bmi<25) return 'Normal';
+  if(bmi<30) return 'Overweight';
+  return 'Obese';
+}
+
+function renderKPIs(){
+  const s = data.stats;
+  const bmi = calcBMI(s.weight, s.height);
+  const toGoal = (s.weight!=null && s.goal!=null) ? (s.weight - s.goal) : null;
+  const goalSub = s.goal==null
+    ? 'No goal set'
+    : `Goal: ${s.goal} lbs${toGoal==null ? '' : (toGoal>=0 ? ` (${toGoal.toFixed(1)} to lose)` : ` (${Math.abs(toGoal).toFixed(1)} to gain)`)}`;
+  const bar = document.getElementById('kpiBar');
+  bar.innerHTML = `
+    <div class="kpi">
+      <div class="label">Current Weight</div>
+      <div class="value">${s.weight ?? '—'} lbs</div>
+      <div class="sub">${goalSub}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">BMI</div>
+      <div class="value">${bmi==null ? '—' : bmi.toFixed(1)}</div>
+      <div class="sub">${bmiLabel(bmi)}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Height</div>
+      <div class="value">${s.height ?? '—'} in</div>
+    </div>
+  `;
+}
+
+function openGoalsModal(){
+  document.getElementById('inWeight').value = data.stats.weight ?? '';
+  document.getElementById('inGoal').value = data.stats.goal ?? '';
+  document.getElementById('inHeight').value = data.stats.height ?? '';
+  document.getElementById('goalsModal').classList.add('open');
+}
+document.getElementById('editGoalsBtn').onclick = openGoalsModal;
+document.getElementById('goalsCancel').onclick = ()=> document.getElementById('goalsModal').classList.remove('open');
+document.getElementById('goalsSave').onclick = ()=>{
+  data.stats.weight = parseFloat(document.getElementById('inWeight').value) || null;
+  data.stats.goal = parseFloat(document.getElementById('inGoal').value) || null;
+  data.stats.height = parseFloat(document.getElementById('inHeight').value) || null;
+  save(data);
+  renderKPIs();
+  document.getElementById('goalsModal').classList.remove('open');
+};
+
+/* ===================== CALENDAR ===================== */
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function dateKey(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+
+function allWorkoutsFlat(){
+  const list = [];
+  data.categories.forEach(cat=>{
+    cat.programs.forEach(prog=>{
+      prog.workouts.forEach(w=>{
+        list.push({ key:`${cat.id}::${prog.id}::${w.id}`, label:`${cat.name} › ${prog.name} › ${w.name}`, w, prog, cat });
+      });
+    });
+  });
+  return list;
+}
+
+function flattenExercises(groups){
+  const list = [];
+  groups.forEach(g=> g.exercises.forEach(ex=> list.push({ type:g.type, name:ex.name, cells:ex.cells })));
+  return list;
+}
+
+function lastNumericWeight(cells){
+  for(let i=cells.length-1;i>=0;i--){
+    const v = parseFloat(cells[i].weight);
+    if(!isNaN(v)) return v;
+  }
+  return null;
+}
+
+// Snapshot a workout's current reps/weight into a dated log entry, so later
+// visits can compare "what we actually did" against the live, editable plan.
+function logSession(workoutKey, dateStr){
+  const found = allWorkoutsFlat().find(f=>f.key===workoutKey);
+  if(!found) return;
+  const existingIdx = data.logs.findIndex(l=>l.workoutKey===workoutKey && l.date===dateStr);
+  const entry = {
+    id: existingIdx>=0 ? data.logs[existingIdx].id : uid('log'),
+    date: dateStr,
+    workoutKey,
+    categoryName: found.cat.name,
+    programName: found.prog.name,
+    workoutName: found.w.name,
+    weeks: JSON.parse(JSON.stringify(found.w.weeks)),
+    groups: JSON.parse(JSON.stringify(found.w.groups)),
+  };
+  if(existingIdx>=0){
+    if(!confirm(`A logged session for "${found.w.name}" on ${dateStr} already exists. Overwrite it with the current values?`)) return;
+    data.logs[existingIdx] = entry;
+  } else {
+    data.logs.push(entry);
+  }
+  save(data);
+}
+
+function renderCalendar(){
+  const {year, month} = data.calendar;
+  document.getElementById('calLabel').textContent = `${MONTH_NAMES[month]} ${year}`;
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  DOW.forEach(d=>{
+    const el = document.createElement('div');
+    el.className='cal-dow'; el.textContent=d;
+    grid.appendChild(el);
+  });
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const today = new Date();
+  for(let i=0;i<firstDow;i++){
+    const el = document.createElement('div');
+    el.className='cal-day empty';
+    grid.appendChild(el);
+  }
+  for(let d=1; d<=daysInMonth; d++){
+    const key = dateKey(year,month,d);
+    const el = document.createElement('div');
+    const isToday = today.getFullYear()===year && today.getMonth()===month && today.getDate()===d;
+    el.className = 'cal-day'+(isToday?' today':'');
+    const assigned = data.assignments[key] || [];
+    const flat = allWorkoutsFlat();
+    const tags = assigned.map(k=>{
+      const found = flat.find(f=>f.key===k);
+      return found ? `<div class="tag">${found.w.name}</div>` : '';
+    }).join('');
+    el.innerHTML = `<div class="num">${d}</div>${tags}`;
+    el.onclick = ()=>{
+      if(data.openDayKey !== key) dayAssignPick = { category:'', program:'', workout:'' };
+      data.openDayKey = key; save(data); renderDayPanel();
+    };
+    grid.appendChild(el);
+  }
+  renderDayPanel();
+}
+
+// Transient (not persisted) state for the cascading category/program/workout
+// picker in the day panel — reset whenever a different day is opened, so
+// assigning a workout stays a 3-short-list pick instead of one giant dropdown.
+let dayAssignPick = { category:'', program:'', workout:'' };
+
+function renderDayPanel(){
+  const host = document.getElementById('dayPanelHost');
+  const key = data.openDayKey;
+  if(!key){ host.innerHTML=''; return; }
+  const flat = allWorkoutsFlat();
+  const assigned = data.assignments[key] || [];
+
+  const progsInScope = dayAssignPick.category
+    ? (data.categories.find(c=>c.id===dayAssignPick.category)?.programs || [])
+    : [];
+  const workoutsInScope = dayAssignPick.program
+    ? (progsInScope.find(p=>p.id===dayAssignPick.program)?.workouts || [])
+    : [];
+
+  host.innerHTML = `
+    <div class="day-panel">
+      <h4>${key} — assigned workouts</h4>
+      <div class="existing-list">
+        ${assigned.length ? assigned.map(k=>{
+          const f = flat.find(x=>x.key===k);
+          return f ? `<div class="item"><span>${f.label}</span><div style="display:flex;gap:6px;"><button class="subtle small" data-log="${k}" title="Snapshot today's reps/weight for analytics">Log Results</button><button class="subtle small" data-remove="${k}">Remove</button></div></div>` : '';
+        }).join('') : '<div class="empty-note">Nothing assigned yet.</div>'}
+      </div>
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px;">Assign an existing workout</label>
+      <div class="filter-row" style="margin-bottom:8px;">
+        <select id="pickCategory">
+          <option value="">1. Choose a category…</option>
+          ${data.categories.map(c=>`<option value="${c.id}" ${dayAssignPick.category===c.id?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+        <select id="pickProgram" ${!dayAssignPick.category?'disabled':''}>
+          <option value="">2. Choose a program…</option>
+          ${progsInScope.map(p=>`<option value="${p.id}" ${dayAssignPick.program===p.id?'selected':''}>${p.name}</option>`).join('')}
+        </select>
+        <select id="pickWorkout" ${!dayAssignPick.program?'disabled':''}>
+          <option value="">3. Choose a workout…</option>
+          ${workoutsInScope.map(w=>`<option value="${w.id}" ${dayAssignPick.workout===w.id?'selected':''}>${w.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="card-actions">
+        <button class="primary small" id="assignBtn" ${!dayAssignPick.workout?'disabled':''}>Add to this day</button>
+        <button class="subtle small" id="createNewBtn">Create a new workout instead</button>
+        <button class="subtle small" id="closeDayBtn">Close</button>
+      </div>
+    </div>
+  `;
+  host.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.getAttribute('data-remove');
+      data.assignments[key] = (data.assignments[key]||[]).filter(x=>x!==k);
+      save(data); renderCalendar();
+    };
+  });
+  host.querySelectorAll('[data-log]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.getAttribute('data-log');
+      logSession(k, key);
+      renderAnalyticsFilters(); renderAnalyticsBody();
+    };
+  });
+  document.getElementById('pickCategory').onchange = (e)=>{
+    dayAssignPick = { category:e.target.value, program:'', workout:'' };
+    renderDayPanel();
+  };
+  document.getElementById('pickProgram').onchange = (e)=>{
+    dayAssignPick.program = e.target.value; dayAssignPick.workout='';
+    renderDayPanel();
+  };
+  document.getElementById('pickWorkout').onchange = (e)=>{
+    dayAssignPick.workout = e.target.value;
+    renderDayPanel();
+  };
+  document.getElementById('assignBtn').onclick = ()=>{
+    if(!dayAssignPick.category || !dayAssignPick.program || !dayAssignPick.workout) return;
+    const wkey = `${dayAssignPick.category}::${dayAssignPick.program}::${dayAssignPick.workout}`;
+    if(!data.assignments[key]) data.assignments[key]=[];
+    if(!data.assignments[key].includes(wkey)) data.assignments[key].push(wkey);
+    dayAssignPick = { category:'', program:'', workout:'' };
+    save(data); renderCalendar();
+  };
+  document.getElementById('createNewBtn').onclick = ()=>{
+    document.getElementById('categoryContent').scrollIntoView({behavior:'smooth'});
+  };
+  document.getElementById('closeDayBtn').onclick = ()=>{
+    data.openDayKey = null; dayAssignPick = { category:'', program:'', workout:'' };
+    save(data); renderDayPanel();
+  };
+}
+
+document.getElementById('calPrev').onclick = ()=>{
+  let {year,month} = data.calendar;
+  month--; if(month<0){month=11;year--;}
+  data.calendar = {year,month}; save(data); renderCalendar();
+};
+document.getElementById('calNext').onclick = ()=>{
+  let {year,month} = data.calendar;
+  month++; if(month>11){month=0;year++;}
+  data.calendar = {year,month}; save(data); renderCalendar();
+};
+
+/* ===================== CATEGORY TABS + CARDS ===================== */
+function renderCategoryTabs(){
+  const host = document.getElementById('categoryTabs');
+  host.innerHTML = data.categories.map(c=>`
+    <button class="tab-btn ${c.id===data.activeCategory?'active':''}" data-cat="${c.id}">${c.name}</button>
+  `).join('') + `<button class="subtle" id="addCatBtn">+ Add Category</button>`;
+
+  host.querySelectorAll('[data-cat]').forEach(btn=>{
+    btn.onclick = ()=>{
+      data.activeCategory = btn.getAttribute('data-cat');
+      save(data); renderCategoryTabs(); renderCategoryContent();
+    };
+  });
+  document.getElementById('addCatBtn').onclick = ()=>{
+    const name = prompt('New category name (e.g. Yoga, Swimming):');
+    if(!name) return;
+    const id = uid('cat');
+    data.categories.push({id, name, programs:[]});
+    data.activeCategory = id;
+    save(data); renderCategoryTabs(); renderCategoryContent();
+  };
+}
+
+function currentCategory(){
+  return data.categories.find(c=>c.id===data.activeCategory) || data.categories[0];
+}
+
+function renderCategoryContent(){
+  const cat = currentCategory();
+  const host = document.getElementById('categoryContent');
+  if(!cat){ host.innerHTML=''; return; }
+  host.innerHTML = `
+    <div id="programsHost"></div>
+    <div class="card-actions">
+      <button class="primary" id="addProgramBtn">+ Add Program</button>
+    </div>
+  `;
+  document.getElementById('addProgramBtn').onclick = ()=>{
+    const name = prompt('New program name (e.g. Body Beast, 5x5, Couch to 5K):');
+    if(!name) return;
+    cat.programs.push({id:uid('prog'), name, workouts:[]});
+    save(data); renderCategoryContent();
+  };
+  renderPrograms(cat);
+}
+
+function renderPrograms(cat){
+  const host = document.getElementById('programsHost');
+  host.innerHTML = '';
+  cat.programs.forEach(prog=>{
+    const card = document.createElement('div');
+    card.className = 'program-card';
+    card.innerHTML = `
+      <div class="card-header" data-toggle>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="caret">▾</span>
+          <input class="name-input" value="${prog.name}" data-rename-prog>
+        </div>
+        <div>
+          <button class="subtle small" data-add-workout>+ Workout</button>
+          <button class="subtle small danger-outline" data-del-prog>Delete</button>
+        </div>
+      </div>
+      <div class="card-body"><div data-workouts-host></div></div>
+    `;
+    card.querySelector('[data-toggle]').addEventListener('click', (e)=>{
+      if(e.target.closest('input,button')) return;
+      card.classList.toggle('collapsed');
+    });
+    card.querySelector('[data-rename-prog]').onchange = (e)=>{
+      prog.name = e.target.value; save(data);
+    };
+    card.querySelector('[data-del-prog]').onclick = (e)=>{
+      e.stopPropagation();
+      if(!confirm(`Delete program "${prog.name}" and all its workouts?`)) return;
+      cat.programs = cat.programs.filter(p=>p!==prog);
+      save(data); renderCategoryContent();
+    };
+    card.querySelector('[data-add-workout]').onclick = (e)=>{
+      e.stopPropagation();
+      const name = prompt('New workout name (e.g. Build: Legs):');
+      if(!name) return;
+      prog.workouts.push({
+        id:uid('workout'), name, equipment:[], weightSuggestions:'', notes:'',
+        weeks:['Set 1'], groups:[{type:'Single Set', exercises:[{name:'New Exercise', cells:[{reps:'',weight:''}]}]}]
+      });
+      save(data); renderCategoryContent();
+    };
+    host.appendChild(card);
+    renderWorkouts(prog, card.querySelector('[data-workouts-host]'), cat);
+  });
+}
+
+function renderWorkouts(prog, host, cat){
+  host.innerHTML = '';
+  prog.workouts.forEach(w=>{
+    const workoutKey = `${cat.id}::${prog.id}::${w.id}`;
+    const logCount = data.logs.filter(l=>l.workoutKey===workoutKey).length;
+
+    const card = document.createElement('div');
+    card.className = 'workout-card collapsed';
+    card.innerHTML = `
+      <div class="card-header" data-toggle>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="caret">▾</span>
+          <input class="name-input" value="${w.name}" data-rename-workout>
+          <span class="log-count-badge" data-log-count>${logCount} logged</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <label class="switch" title="Compare this workout to a previously logged day">
+            <input type="checkbox" data-compare-toggle>
+            <span class="slider"></span>
+          </label>
+          <span style="font-size:11px;color:var(--muted);">Compare to a day</span>
+          <button class="subtle small" data-log-session>Log Session</button>
+          <button class="subtle small" data-assign>Add to Calendar</button>
+          <button class="subtle small" data-move>Move</button>
+          <button class="subtle small danger-outline" data-del-workout>Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div data-worksheet-host></div>
+      </div>
+    `;
+    card.querySelector('[data-toggle]').addEventListener('click', (e)=>{
+      if(e.target.closest('input,button,select,.switch')) return;
+      card.classList.toggle('collapsed');
+    });
+    card.querySelector('[data-rename-workout]').onchange = (e)=>{ w.name = e.target.value; save(data); };
+    card.querySelector('[data-del-workout]').onclick = (e)=>{
+      e.stopPropagation();
+      if(!confirm(`Delete workout "${w.name}"?`)) return;
+      prog.workouts = prog.workouts.filter(x=>x!==w);
+      save(data); renderCategoryContent();
+    };
+    card.querySelector('[data-assign]').onclick = (e)=>{
+      e.stopPropagation();
+      openAssignPopover(e.target, workoutKey);
+    };
+    card.querySelector('[data-log-session]').onclick = (e)=>{
+      e.stopPropagation();
+      openLogPopover(e.target, workoutKey, ()=>{
+        const badge = card.querySelector('[data-log-count]');
+        badge.textContent = `${data.logs.filter(l=>l.workoutKey===workoutKey).length} logged`;
+        renderAnalyticsFilters(); renderAnalyticsBody();
+      });
+    };
+    card.querySelector('[data-move]').onclick = (e)=>{
+      e.stopPropagation();
+      openMovePopover(e.target, cat, prog, w);
+    };
+    card.querySelector('[data-compare-toggle]').onchange = (e)=>{
+      const worksheetHost = card.querySelector('[data-worksheet-host]');
+      if(e.target.checked){
+        openComparePopover(e.target, w, workoutKey, worksheetHost, e.target);
+      } else {
+        renderWorksheet(w, worksheetHost, null);
+      }
+    };
+    host.appendChild(card);
+    renderWorksheet(w, card.querySelector('[data-worksheet-host]'));
+  });
+}
+
+/* ---------- LOG SESSION POPOVER (opens right at the button, no scrolling) ---------- */
+function openLogPopover(anchor, workoutKey, onLogged){
+  document.querySelectorAll('.assign-popover').forEach(p=>p.remove());
+  const pop = document.createElement('div');
+  pop.className = 'assign-popover';
+  const rect = anchor.getBoundingClientRect();
+  pop.style.top = (window.scrollY + rect.bottom + 6) + 'px';
+  pop.style.left = (window.scrollX + rect.left - 180) + 'px';
+  const today = new Date();
+  const todayStr = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+  pop.innerHTML = `
+    <span class="close-x">✕</span>
+    <h4>Log a session</h4>
+    <input type="date" id="logDate" value="${todayStr}">
+    <button class="primary small" id="logConfirm" style="width:100%;">Log this date</button>
+  `;
+  document.body.appendChild(pop);
+  pop.querySelector('.close-x').onclick = ()=>pop.remove();
+  pop.querySelector('#logConfirm').onclick = ()=>{
+    const val = pop.querySelector('#logDate').value;
+    if(!val) return;
+    logSession(workoutKey, val);
+    pop.remove();
+    onLogged();
+  };
+  setTimeout(()=>{
+    document.addEventListener('click', function handler(ev){
+      if(!pop.contains(ev.target) && ev.target!==anchor){ pop.remove(); document.removeEventListener('click',handler); }
+    });
+  },0);
+}
+
+/* ---------- COMPARE POPOVER (opens right at the switch, no scrolling) ----------
+   Picking a date here doesn't open a separate table — it re-renders the
+   worksheet with that day's reps/weight shown inline under each cell. */
+function openComparePopover(anchor, w, workoutKey, worksheetHost, switchEl){
+  document.querySelectorAll('.assign-popover').forEach(p=>p.remove());
+  const logs = data.logs.filter(l=>l.workoutKey===workoutKey).sort((a,b)=>b.date.localeCompare(a.date));
+  const pop = document.createElement('div');
+  pop.className = 'assign-popover';
+  const rect = anchor.getBoundingClientRect();
+  pop.style.top = (window.scrollY + rect.bottom + 6) + 'px';
+  pop.style.left = (window.scrollX + rect.left - 180) + 'px';
+  pop.innerHTML = `
+    <span class="close-x">✕</span>
+    <h4>Compare to a day</h4>
+    ${logs.length ? `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+        ${logs.map(l=>`<div class="history-entry" data-log-pick="${l.id}">${l.date}</div>`).join('')}
+      </div>
+      <button class="subtle small" id="clearCompare" style="width:100%;">Clear comparison</button>
+    ` : `<div class="empty-note">No sessions logged yet for this workout.</div>`}
+  `;
+  document.body.appendChild(pop);
+  let picked = false;
+  const closePopover = ()=>{
+    pop.remove();
+    if(!picked) switchEl.checked = false;
+  };
+  pop.querySelector('.close-x').onclick = closePopover;
+  pop.querySelectorAll('[data-log-pick]').forEach(el=>{
+    el.onclick = ()=>{
+      picked = true;
+      const log = logs.find(l=>l.id===el.getAttribute('data-log-pick'));
+      renderWorksheet(w, worksheetHost, log);
+      switchEl.checked = true;
+      pop.remove();
+    };
+  });
+  const clearBtn = pop.querySelector('#clearCompare');
+  if(clearBtn) clearBtn.onclick = ()=>{
+    picked = true;
+    renderWorksheet(w, worksheetHost, null);
+    switchEl.checked = false;
+    pop.remove();
+  };
+  setTimeout(()=>{
+    document.addEventListener('click', function handler(ev){
+      if(!pop.contains(ev.target) && ev.target!==anchor){
+        closePopover();
+        document.removeEventListener('click',handler);
+      }
+    });
+  },0);
+}
+
+/* ---------- MOVE WORKOUT (between programs/categories, creating a new program if needed) ---------- */
+function openMovePopover(anchor, cat, prog, w){
+  document.querySelectorAll('.assign-popover').forEach(p=>p.remove());
+  const pop = document.createElement('div');
+  pop.className = 'assign-popover';
+  const rect = anchor.getBoundingClientRect();
+  pop.style.top = (window.scrollY + rect.bottom + 6) + 'px';
+  pop.style.left = (window.scrollX + rect.left - 180) + 'px';
+
+  const programOptionsHtml = (catId, selectedProgId)=>{
+    const progs = data.categories.find(c=>c.id===catId)?.programs || [];
+    return progs.map(p=>`<option value="${p.id}" ${p.id===selectedProgId?'selected':''}>${p.name}</option>`).join('');
+  };
+
+  pop.innerHTML = `
+    <span class="close-x">✕</span>
+    <h4>Move "${w.name}"</h4>
+    <select id="moveCategory">
+      ${data.categories.map(c=>`<option value="${c.id}" ${c.id===cat.id?'selected':''}>${c.name}</option>`).join('')}
+    </select>
+    <select id="moveProgram">${programOptionsHtml(cat.id, prog.id)}</select>
+    <button class="subtle small" id="moveNewProgram" style="width:100%;margin-bottom:8px;">+ Create new program here</button>
+    <button class="primary small" id="moveConfirm" style="width:100%;">Move workout</button>
+  `;
+  document.body.appendChild(pop);
+
+  pop.querySelector('.close-x').onclick = ()=>pop.remove();
+  pop.querySelector('#moveCategory').onchange = (e)=>{
+    pop.querySelector('#moveProgram').innerHTML = programOptionsHtml(e.target.value, null);
+  };
+  pop.querySelector('#moveNewProgram').onclick = ()=>{
+    const targetCatId = pop.querySelector('#moveCategory').value;
+    const name = prompt('New program name:');
+    if(!name) return;
+    const targetCat = data.categories.find(c=>c.id===targetCatId);
+    const newProg = { id:uid('prog'), name, workouts:[] };
+    targetCat.programs.push(newProg);
+    save(data);
+    pop.querySelector('#moveProgram').innerHTML = programOptionsHtml(targetCatId, newProg.id);
+  };
+  pop.querySelector('#moveConfirm').onclick = ()=>{
+    const targetCatId = pop.querySelector('#moveCategory').value;
+    const targetProgId = pop.querySelector('#moveProgram').value;
+    if(!targetCatId || !targetProgId) return;
+    const targetCat = data.categories.find(c=>c.id===targetCatId);
+    const targetProg = targetCat.programs.find(p=>p.id===targetProgId);
+    if(targetProg===prog){ pop.remove(); return; }
+
+    // Re-key any calendar assignments and logged sessions so they follow
+    // the workout to its new category/program instead of getting orphaned.
+    const oldKey = `${cat.id}::${prog.id}::${w.id}`;
+    const newKey = `${targetCat.id}::${targetProg.id}::${w.id}`;
+    Object.values(data.assignments).forEach(list=>{
+      const idx = list.indexOf(oldKey);
+      if(idx!==-1) list[idx] = newKey;
+    });
+    data.logs.forEach(log=>{
+      if(log.workoutKey===oldKey){
+        log.workoutKey = newKey;
+        log.categoryName = targetCat.name;
+        log.programName = targetProg.name;
+      }
+    });
+
+    prog.workouts = prog.workouts.filter(x=>x!==w);
+    targetProg.workouts.push(w);
+    save(data);
+    pop.remove();
+    renderCategoryContent();
+    renderAnalyticsFilters(); renderAnalyticsBody();
+  };
+  setTimeout(()=>{
+    document.addEventListener('click', function handler(ev){
+      if(!pop.contains(ev.target) && ev.target!==anchor){ pop.remove(); document.removeEventListener('click',handler); }
+    });
+  },0);
+}
+
+function openAssignPopover(anchor, workoutKey){
+  document.querySelectorAll('.assign-popover').forEach(p=>p.remove());
+  const pop = document.createElement('div');
+  pop.className = 'assign-popover';
+  const rect = anchor.getBoundingClientRect();
+  pop.style.top = (window.scrollY + rect.bottom + 6) + 'px';
+  pop.style.left = (window.scrollX + rect.left - 180) + 'px';
+  pop.innerHTML = `
+    <span class="close-x">✕</span>
+    <h4>Assign to a date</h4>
+    <input type="date" id="popDate">
+    <button class="primary small" id="popConfirm" style="width:100%;">Add</button>
+  `;
+  document.body.appendChild(pop);
+  pop.querySelector('.close-x').onclick = ()=>pop.remove();
+  pop.querySelector('#popConfirm').onclick = ()=>{
+    const val = pop.querySelector('#popDate').value;
+    if(!val) return;
+    if(!data.assignments[val]) data.assignments[val] = [];
+    if(!data.assignments[val].includes(workoutKey)) data.assignments[val].push(workoutKey);
+    save(data);
+    pop.remove();
+    renderCalendar();
+  };
+  setTimeout(()=>{
+    document.addEventListener('click', function handler(ev){
+      if(!pop.contains(ev.target) && ev.target!==anchor){ pop.remove(); document.removeEventListener('click',handler); }
+    });
+  },0);
+}
+
+function renderWorksheet(w, host, compareLog){
+  // Recursive re-renders (add row, delete week, etc.) call this with no
+  // compareLog arg — fall back to whatever comparison day was last active
+  // for this card, so editing the sheet doesn't lose the inline "was X" hints.
+  if(compareLog === undefined) compareLog = host._compareLog || null;
+  host._compareLog = compareLog;
+  const pastFlat = compareLog ? flattenExercises(compareLog.groups) : null;
+
+  const weekCols = w.weeks.map((wk,i)=>`<th>${wk} <button class="subtle small" data-del-week="${i}" title="Remove week">✕</button></th>`).join('');
+  const rows = [];
+  let flatIdx = 0;
+  w.groups.forEach((g, gi)=>{
+    g.exercises.forEach((ex, ei)=>{
+      const pastEx = pastFlat ? (pastFlat.find(p=>p.name===ex.name) || pastFlat[flatIdx]) : null;
+      const cells = ex.cells.map((c,ci)=>{
+        const pastCell = pastEx ? pastEx.cells[ci] : null;
+        return `
+        <td>
+          <div class="cell-pair">
+            <span class="r">R</span><input class="reps-input" value="${c.reps}" data-cell="${gi}|${ei}|${ci}|reps">
+            <span class="r">W</span><input value="${c.weight}" data-cell="${gi}|${ei}|${ci}|weight">
+          </div>
+          ${pastCell ? `<div class="compare-hint">${compareLog.date}: ${pastCell.reps||'-'} reps @ ${pastCell.weight||'-'}</div>` : ''}
+        </td>
+      `;
+      }).join('');
+      rows.push(`
+        <tr>
+          <td class="settype">${ei===0 ? `<input value="${g.type}" data-grouptype="${gi}">` : ''}</td>
+          <td><input value="${ex.name}" data-exname="${gi}|${ei}"></td>
+          ${cells}
+          <td class="row-actions">
+            <button class="subtle small" data-del-ex="${gi}|${ei}">✕ row</button>
+          </td>
+        </tr>
+      `);
+      flatIdx++;
+    });
+  });
+
+  host.innerHTML = `
+    <table class="worksheet">
+      <thead>
+        <tr><th>Set Type</th><th>Exercise</th>${weekCols}<th></th></tr>
+      </thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+    <div class="action-group">
+      <div class="action-group-label">Sets (columns)</div>
+      <div class="card-actions">
+        <button class="subtle small" data-add-week>+ Add Set Column</button>
+      </div>
+    </div>
+    <div class="action-group">
+      <div class="action-group-label">Set Groups (rows)</div>
+      <div class="card-actions">
+        <button class="subtle small" data-add-group="Single Set">+ Single Set</button>
+        <button class="subtle small" data-add-group="Super Set">+ Super Set</button>
+        <button class="subtle small" data-add-group="Giant Set">+ Giant Set</button>
+        <button class="subtle small" data-add-group-custom>+ Custom Set Type…</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Equipment</div>
+      <div class="field-value" data-field-display="equipment">${w.equipment.length ? w.equipment.join(', ') : '<span class="empty-note">— click to add —</span>'}</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Weight Suggestions</div>
+      <div class="field-value" data-field-display="weightsug">${w.weightSuggestions || '<span class="empty-note">— click to add —</span>'}</div>
+    </div>
+    <div class="field-row">
+      <div class="field-label">Notes</div>
+      <div class="field-value" data-field-display="notes">${w.notes || '<span class="empty-note">— click to add —</span>'}</div>
+    </div>
+  `;
+
+  host.querySelectorAll('[data-cell]').forEach(inp=>{
+    inp.onchange = (e)=>{
+      const [gi,ei,ci,field] = e.target.getAttribute('data-cell').split('|');
+      w.groups[gi].exercises[ei].cells[ci][field] = e.target.value;
+      save(data);
+    };
+  });
+  host.querySelectorAll('[data-exname]').forEach(inp=>{
+    inp.onchange = (e)=>{
+      const [gi,ei] = e.target.getAttribute('data-exname').split('|');
+      w.groups[gi].exercises[ei].name = e.target.value;
+      save(data);
+    };
+  });
+  host.querySelectorAll('[data-del-ex]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const [gi,ei] = btn.getAttribute('data-del-ex').split('|');
+      w.groups[gi].exercises.splice(ei,1);
+      if(w.groups[gi].exercises.length===0) w.groups.splice(gi,1);
+      save(data); renderWorksheet(w, host);
+    };
+  });
+  host.querySelectorAll('[data-del-week]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const idx = +btn.getAttribute('data-del-week');
+      w.weeks.splice(idx,1);
+      w.groups.forEach(g=>g.exercises.forEach(ex=>ex.cells.splice(idx,1)));
+      save(data); renderWorksheet(w, host);
+    };
+  });
+  host.querySelector('[data-add-week]').onclick = ()=>{
+    w.weeks.push(`Set ${w.weeks.length+1}`);
+    w.groups.forEach(g=>g.exercises.forEach(ex=>ex.cells.push({reps:'',weight:''})));
+    save(data); renderWorksheet(w, host);
+  };
+  host.querySelectorAll('[data-grouptype]').forEach(inp=>{
+    inp.onchange = (e)=>{
+      const gi = e.target.getAttribute('data-grouptype');
+      w.groups[gi].type = e.target.value;
+      save(data);
+    };
+  });
+  host.querySelector('[data-add-group-custom]').onclick = ()=>{
+    const type = prompt('Name this set type (e.g. Drop Set, Circuit, Tri-Set):');
+    if(!type) return;
+    w.groups.push({type, exercises:[{name:'New Exercise', cells:w.weeks.map(()=>({reps:'',weight:''}))}]});
+    save(data); renderWorksheet(w, host);
+  };
+  host.querySelectorAll('[data-add-group]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const type = btn.getAttribute('data-add-group');
+      w.groups.push({type, exercises:[{name:'New Exercise', cells:w.weeks.map(()=>({reps:'',weight:''}))}]});
+      save(data); renderWorksheet(w, host);
+    };
+  });
+  host.querySelectorAll('[data-field-display]').forEach(div=>{
+    div.onclick = ()=>{
+      const key = div.getAttribute('data-field-display');
+      const raw = key==='equipment' ? w.equipment.join(', ') : (key==='weightsug' ? w.weightSuggestions : w.notes);
+      div.innerHTML = '';
+      const input = document.createElement(key==='notes' ? 'textarea' : 'input');
+      input.value = raw;
+      if(key==='notes') input.rows = 3;
+      div.appendChild(input);
+      input.focus();
+      const commit = ()=>{
+        if(key==='equipment') w.equipment = input.value.split(',').map(s=>s.trim()).filter(Boolean);
+        else if(key==='weightsug') w.weightSuggestions = input.value;
+        else w.notes = input.value;
+        save(data);
+        renderWorksheet(w, host);
+      };
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter' && key!=='notes'){ e.preventDefault(); input.blur(); }
+      });
+    };
+  });
+
+  // add-exercise-to-last-group row
+  const addRow = document.createElement('div');
+  addRow.className = 'exercise-row-add';
+  addRow.innerHTML = `<button class="subtle small" data-add-ex>+ Add Exercise to last set group</button>`;
+  addRow.querySelector('[data-add-ex]').onclick = ()=>{
+    if(w.groups.length===0){ w.groups.push({type:'Single Set', exercises:[]}); }
+    w.groups[w.groups.length-1].exercises.push({name:'New Exercise', cells:w.weeks.map(()=>({reps:'',weight:''}))});
+    save(data); renderWorksheet(w, host);
+  };
+  host.appendChild(addRow);
+}
+
+/* ===================== ANALYTICS ===================== */
+function getFilteredLogs(){
+  const f = data.analyticsFilters;
+  let logs = data.logs.filter(l=>{
+    const [cId, pId, wId] = l.workoutKey.split('::');
+    if(f.category && cId!==f.category) return false;
+    if(f.program && pId!==f.program) return false;
+    if(f.workout && wId!==f.workout) return false;
+    return true;
+  });
+  if(f.range!=='all'){
+    const days = parseInt(f.range,10);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate()-days);
+    const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
+    logs = logs.filter(l=> l.date >= cutoffStr);
+  }
+  return logs.sort((a,b)=>a.date.localeCompare(b.date));
+}
+
+function renderAnalyticsFilters(){
+  const f = data.analyticsFilters;
+  const progsInScope = f.category
+    ? (data.categories.find(c=>c.id===f.category)?.programs || [])
+    : data.categories.flatMap(c=>c.programs);
+  const workoutsInScope = f.program
+    ? (progsInScope.find(p=>p.id===f.program)?.workouts || [])
+    : progsInScope.flatMap(p=>p.workouts);
+
+  const host = document.getElementById('analyticsFilters');
+  host.innerHTML = `
+    <select id="filtCategory">
+      <option value="">All categories</option>
+      ${data.categories.map(c=>`<option value="${c.id}" ${f.category===c.id?'selected':''}>${c.name}</option>`).join('')}
+    </select>
+    <select id="filtProgram">
+      <option value="">All programs</option>
+      ${progsInScope.map(p=>`<option value="${p.id}" ${f.program===p.id?'selected':''}>${p.name}</option>`).join('')}
+    </select>
+    <select id="filtWorkout">
+      <option value="">All workouts</option>
+      ${workoutsInScope.map(w=>`<option value="${w.id}" ${f.workout===w.id?'selected':''}>${w.name}</option>`).join('')}
+    </select>
+    <select id="filtRange">
+      <option value="all" ${f.range==='all'?'selected':''}>All time</option>
+      <option value="7" ${f.range==='7'?'selected':''}>Last 7 days</option>
+      <option value="30" ${f.range==='30'?'selected':''}>Last 30 days</option>
+      <option value="90" ${f.range==='90'?'selected':''}>Last 90 days</option>
+    </select>
+  `;
+  document.getElementById('filtCategory').onchange = (e)=>{
+    f.category = e.target.value; f.program=''; f.workout='';
+    save(data); renderAnalyticsFilters(); renderAnalyticsBody();
+  };
+  document.getElementById('filtProgram').onchange = (e)=>{
+    f.program = e.target.value; f.workout='';
+    save(data); renderAnalyticsFilters(); renderAnalyticsBody();
+  };
+  document.getElementById('filtWorkout').onchange = (e)=>{
+    f.workout = e.target.value; save(data); renderAnalyticsBody();
+  };
+  document.getElementById('filtRange').onchange = (e)=>{
+    f.range = e.target.value; save(data); renderAnalyticsBody();
+  };
+}
+
+function renderAnalyticsBody(){
+  const logs = getFilteredLogs();
+  const host = document.getElementById('analyticsBody');
+  if(!logs.length){
+    host.innerHTML = `<div class="empty-note">No logged sessions match these filters yet. Open a calendar day with a workout assigned and click "Log Results" to start tracking.</div>`;
+    return;
+  }
+  const first = logs[0].date, last = logs[logs.length-1].date;
+  const spanDays = Math.max(1, (new Date(last) - new Date(first)) / 86400000);
+  const perWeek = (logs.length / (spanDays/7)).toFixed(1);
+
+  const listRows = logs.slice().reverse().map(l=>`
+    <tr>
+      <td>${l.date}</td>
+      <td>${l.categoryName} › ${l.programName} › ${l.workoutName}</td>
+      <td>${flattenExercises(l.groups).length}</td>
+    </tr>
+  `).join('');
+
+  const exerciseNames = Array.from(new Set(logs.flatMap(l=>flattenExercises(l.groups).map(e=>e.name))));
+  const f = data.analyticsFilters;
+  if(!f.exercise || !exerciseNames.includes(f.exercise)) f.exercise = exerciseNames[0] || '';
+
+  host.innerHTML = `
+    <div class="kpi-bar">
+      <div class="kpi"><div class="label">Sessions Logged</div><div class="value">${logs.length}</div></div>
+      <div class="kpi"><div class="label">Date Range</div><div class="value" style="font-size:15px;">${first} → ${last}</div></div>
+      <div class="kpi"><div class="label">Avg / Week</div><div class="value">${perWeek}</div></div>
+    </div>
+    <table class="worksheet">
+      <thead><tr><th>Date</th><th>Workout</th><th># Exercises</th></tr></thead>
+      <tbody>${listRows}</tbody>
+    </table>
+    <h4 style="margin-top:18px;">Exercise trend (weight over time)</h4>
+    <select id="trendExercise" style="margin-bottom:10px;">
+      ${exerciseNames.map(n=>`<option value="${n}" ${f.exercise===n?'selected':''}>${n}</option>`).join('')}
+    </select>
+    <div id="trendChart"></div>
+  `;
+  document.getElementById('trendExercise').onchange = (e)=>{
+    f.exercise = e.target.value; save(data); renderTrendChart(logs, f.exercise);
+  };
+  renderTrendChart(logs, f.exercise);
+}
+
+function renderTrendChart(logs, exerciseName){
+  const host = document.getElementById('trendChart');
+  if(!exerciseName){ host.innerHTML=''; return; }
+  const points = logs.map(l=>{
+    const ex = flattenExercises(l.groups).find(e=>e.name===exerciseName);
+    return { date:l.date, weight: ex ? lastNumericWeight(ex.cells) : null };
+  }).filter(p=>p.weight!=null);
+  if(!points.length){
+    host.innerHTML = `<div class="empty-note">No numeric weight logged for this exercise yet.</div>`;
+    return;
+  }
+  const max = Math.max(...points.map(p=>p.weight));
+  host.innerHTML = `
+    <div class="sparkline">
+      ${points.map(p=>`
+        <div class="bar-col" title="${p.date}: ${p.weight} lbs">
+          <div class="bar" style="height:${Math.max(4, (p.weight/max)*100)}px"></div>
+          <div class="bar-label">${p.date.slice(5)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+/* ===================== MAIN VIEW TABS ===================== */
+function renderMainTabs(){
+  document.querySelectorAll('[data-main-view]').forEach(btn=>{
+    const view = btn.getAttribute('data-main-view');
+    btn.classList.toggle('active', view===data.activeMainView);
+    btn.onclick = ()=>{
+      data.activeMainView = view;
+      save(data);
+      renderMainTabs();
+    };
+  });
+  document.getElementById('viewWorkouts').style.display = data.activeMainView==='workouts' ? '' : 'none';
+  document.getElementById('viewAnalytics').style.display = data.activeMainView==='analytics' ? '' : 'none';
+  document.getElementById('viewLogs').style.display = data.activeMainView==='logs' ? '' : 'none';
+  if(data.activeMainView==='analytics'){ renderAnalyticsFilters(); renderAnalyticsBody(); }
+  if(data.activeMainView==='logs'){ renderLogsView(); }
+}
+
+/* ===================== LOGS VIEW (view + edit + delete logged sessions) ===================== */
+function renderLogsView(){
+  const host = document.getElementById('logsList');
+  const logs = data.logs.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(!logs.length){
+    host.innerHTML = `<div class="empty-note">No sessions logged yet. Use "Log Session" on any workout card, or "Log Results" from a calendar day.</div>`;
+    return;
+  }
+  host.innerHTML = logs.map(l=>`
+    <div class="program-card collapsed" data-log-card="${l.id}">
+      <div class="card-header" data-toggle>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="caret">▾</span>
+          <strong>${l.date}</strong>
+          <span style="color:var(--muted);font-size:12px;">${l.categoryName} › ${l.programName} › ${l.workoutName}</span>
+        </div>
+        <div>
+          <button class="subtle small danger-outline" data-del-log="${l.id}">Delete</button>
+        </div>
+      </div>
+      <div class="card-body"><div data-log-edit-host="${l.id}"></div></div>
+    </div>
+  `).join('');
+
+  host.querySelectorAll('[data-toggle]').forEach(headerEl=>{
+    headerEl.addEventListener('click', (e)=>{
+      if(e.target.closest('input,button')) return;
+      headerEl.closest('.program-card').classList.toggle('collapsed');
+    });
+  });
+  host.querySelectorAll('[data-del-log]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      const id = btn.getAttribute('data-del-log');
+      const log = logs.find(x=>x.id===id);
+      if(!confirm(`Delete the logged session for "${log.workoutName}" on ${log.date}?`)) return;
+      data.logs = data.logs.filter(x=>x.id!==id);
+      save(data);
+      renderLogsView();
+      renderAnalyticsFilters(); renderAnalyticsBody();
+      renderCategoryContent();
+    };
+  });
+  logs.forEach(l=>{
+    renderLogEditTable(l, host.querySelector(`[data-log-edit-host="${l.id}"]`));
+  });
+}
+
+function renderLogEditTable(log, host){
+  const weekCols = log.weeks.map(wk=>`<th>${wk}</th>`).join('');
+  const rows = [];
+  log.groups.forEach((g, gi)=>{
+    g.exercises.forEach((ex, ei)=>{
+      const cells = ex.cells.map((c,ci)=>`
+        <td>
+          <div class="cell-pair">
+            <span class="r">R</span><input class="reps-input" value="${c.reps}" data-log-cell="${gi}|${ei}|${ci}|reps">
+            <span class="r">W</span><input value="${c.weight}" data-log-cell="${gi}|${ei}|${ci}|weight">
+          </div>
+        </td>
+      `).join('');
+      rows.push(`<tr><td class="settype">${ei===0 ? g.type : ''}</td><td>${ex.name}</td>${cells}</tr>`);
+    });
+  });
+  host.innerHTML = `
+    <table class="worksheet">
+      <thead><tr><th>Set Type</th><th>Exercise</th>${weekCols}</tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+  `;
+  host.querySelectorAll('[data-log-cell]').forEach(inp=>{
+    inp.onchange = (e)=>{
+      const [gi,ei,ci,field] = e.target.getAttribute('data-log-cell').split('|');
+      log.groups[gi].exercises[ei].cells[ci][field] = e.target.value;
+      save(data);
+      renderAnalyticsBody();
+    };
+  });
+}
+
+/* ===================== DOWNLOAD (.xlsx, matching the real app's Backup & Restore) ===================== */
+function downloadWorkoutData(){
+  const flat = allWorkoutsFlat();
+  const bmi = calcBMI(data.stats.weight, data.stats.height);
+
+  const goalsRows = [
+    { Field:'Current Weight (lbs)', Value: data.stats.weight ?? '' },
+    { Field:'Goal Weight (lbs)', Value: data.stats.goal ?? '' },
+    { Field:'Height (in)', Value: data.stats.height ?? '' },
+    { Field:'BMI', Value: bmi==null ? '' : Number(bmi.toFixed(1)) },
+  ];
+
+  const calendarRows = [];
+  Object.entries(data.assignments)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([date, keys]) => {
+      keys.forEach(k => {
+        const f = flat.find(x => x.key === k);
+        if (f) calendarRows.push({ Date:date, Category:f.cat.name, Program:f.prog.name, Workout:f.w.name });
+      });
+    });
+
+  const workoutRows = [];
+  data.categories.forEach(cat => cat.programs.forEach(prog => prog.workouts.forEach(w => {
+    flattenExercises(w.groups).forEach(ex => {
+      ex.cells.forEach((cell, i) => {
+        workoutRows.push({
+          Category:cat.name, Program:prog.name, Workout:w.name, 'Set Type':ex.type,
+          Exercise:ex.name, Set: w.weeks[i] ?? `Set ${i+1}`, Reps:cell.reps, Weight:cell.weight,
+        });
+      });
+    });
+  })));
+
+  const sessionRows = [];
+  data.logs.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(log => {
+    flattenExercises(log.groups).forEach(ex => {
+      ex.cells.forEach((cell, i) => {
+        sessionRows.push({
+          Date:log.date, Category:log.categoryName, Program:log.programName, Workout:log.workoutName,
+          Exercise:ex.name, Set: log.weeks[i] ?? `Set ${i+1}`, Reps:cell.reps, Weight:cell.weight,
+        });
+      });
+    });
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(goalsRows), 'Goals');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(calendarRows), 'Calendar');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(workoutRows), 'Workouts');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows), 'Sessions');
+
+  const today = new Date();
+  const stamp = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `workout-backup-${stamp}.xlsx`);
+}
+document.getElementById('downloadBtn').onclick = downloadWorkoutData;
+
+/* ===================== INIT ===================== */
+renderKPIs();
+renderCalendar();
+renderCategoryTabs();
+renderCategoryContent();
+renderMainTabs();
+</script>
+</body>
+</html>
