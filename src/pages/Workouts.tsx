@@ -59,12 +59,14 @@ function calcBMI(weight: number | null, height: number | null): number | null {
   if (!weight || !height) return null
   return (weight / (height * height)) * 703
 }
+// Neutral, non-judgmental wording for the CDC bands — informative without the
+// clinical/loaded terms ("overweight", "obese"). Still maps to the same ranges.
 function bmiLabel(bmi: number | null): string {
   if (bmi == null) return '—'
-  if (bmi < 18.5) return 'Underweight'
-  if (bmi < 25) return 'Normal'
-  if (bmi < 30) return 'Overweight'
-  return 'Obese'
+  if (bmi < 18.5) return 'Below healthy range'
+  if (bmi < 25) return 'Healthy range'
+  if (bmi < 30) return 'Above healthy range'
+  return 'Well above healthy range'
 }
 // Height is stored internally as total inches (keeps the BMI math simple); this
 // presents it back in the feet-and-inches form people actually think in.
@@ -518,9 +520,9 @@ function GoalModal({ stats, onClose }: { stats: WorkoutStats; onClose: () => voi
           <br />• <strong>BMI</strong> = (weight in lbs ÷ (height in inches)²) × 703.
           <br />• <strong>To goal</strong> = current weight − goal weight. Positive means lbs left to lose,
           negative means lbs left to gain.
-          <br />• BMI categories shown are the standard CDC bands: &lt;18.5 underweight, 18.5–24.9 normal,
-          25–29.9 overweight, 30+ obese. This is a general population metric — it doesn't account for muscle
-          mass, so treat it as a rough signal, not a target.
+          <br />• The label reflects the standard CDC ranges (under 18.5, 18.5–24.9, 25–29.9, 30+). BMI is a
+          rough general-population screen — it doesn't account for muscle, build, or how you feel, so treat it
+          as a loose signal, not a verdict.
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
