@@ -518,11 +518,33 @@ function GoalModal({ stats, onClose }: { stats: WorkoutStats; onClose: () => voi
         <div className="mt-4 rounded-lg border-l-4 border-indigo-300 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
           <strong className="text-slate-700">How this is calculated:</strong>
           <br />• <strong>BMI</strong> = (weight in lbs ÷ (height in inches)²) × 703.
-          <br />• <strong>To goal</strong> = current weight − goal weight. Positive means lbs left to lose,
-          negative means lbs left to gain.
-          <br />• The label reflects the standard CDC ranges (under 18.5, 18.5–24.9, 25–29.9, 30+). BMI is a
-          rough general-population screen — it doesn't account for muscle, build, or how you feel, so treat it
-          as a loose signal, not a verdict.
+          <table className="mt-2 w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="text-slate-500">
+                <th className="border border-slate-200 px-2 py-1 text-left font-semibold">BMI</th>
+                <th className="border border-slate-200 px-2 py-1 text-left font-semibold">What it means</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-slate-200 px-2 py-1">under 18.5</td>
+                <td className="border border-slate-200 px-2 py-1">Below healthy range</td>
+              </tr>
+              <tr>
+                <td className="border border-slate-200 px-2 py-1">18.5–24.9</td>
+                <td className="border border-slate-200 px-2 py-1">Healthy range</td>
+              </tr>
+              <tr>
+                <td className="border border-slate-200 px-2 py-1">25–29.9</td>
+                <td className="border border-slate-200 px-2 py-1">Above healthy range</td>
+              </tr>
+              <tr>
+                <td className="border border-slate-200 px-2 py-1">30+</td>
+                <td className="border border-slate-200 px-2 py-1">Well above healthy range</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="mt-2">A rough screen — it ignores muscle &amp; build, so treat it as a loose signal, not a verdict.</div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
