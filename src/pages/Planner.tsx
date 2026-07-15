@@ -136,12 +136,15 @@ function Section({
         </span>
       </div>
       <table className="w-full text-sm">
+        {/* Header labels are wrapped in a span with the SAME px-1.5 the inputs
+            below use, so each title lines up exactly over its values (the cell
+            padding already matches; the inputs' inner padding was the offset). */}
         <thead className="text-left text-[10px] uppercase tracking-wide text-slate-400">
           <tr>
-            <th className="px-4 py-1 font-semibold">Item</th>
-            <th className="px-2 py-1 text-right font-semibold">Month</th>
-            <th className="px-2 py-1 text-right font-semibold">Year</th>
-            <th className="px-2 py-1 font-semibold">Note</th>
+            <th className="px-4 py-1 font-semibold"><span className="inline-block px-1.5">Item</span></th>
+            <th className="px-2 py-1 text-right font-semibold"><span className="inline-block px-1.5">Month</span></th>
+            <th className="px-2 py-1 text-right font-semibold"><span className="inline-block px-1.5">Year</span></th>
+            <th className="px-2 py-1 font-semibold"><span className="inline-block px-1.5">Note</span></th>
             <th className="px-2 py-1"></th>
           </tr>
         </thead>
