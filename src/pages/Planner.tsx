@@ -169,7 +169,7 @@ function Section({
                   onChange={(e) => onLocal(r.id, { monthly: parseFloat(e.target.value) || 0 })}
                   onBlur={(e) => onSave(r.id, { monthly: parseFloat(e.target.value) || 0 })}
                   className={
-                    'w-24 rounded border border-transparent px-1.5 py-1 text-right hover:border-slate-200 focus:border-slate-300 focus:outline-none ' +
+                    'w-full rounded border border-transparent px-1.5 py-1 text-right hover:border-slate-200 focus:border-slate-300 focus:outline-none ' +
                     amountClass
                   }
                 />
@@ -183,7 +183,7 @@ function Section({
                   onChange={(e) => onLocal(r.id, { monthly: (parseFloat(e.target.value) || 0) / 12 })}
                   onBlur={(e) => onSave(r.id, { monthly: (parseFloat(e.target.value) || 0) / 12 })}
                   className={
-                    'w-24 rounded border border-transparent px-1.5 py-1 text-right hover:border-slate-200 focus:border-slate-300 focus:outline-none ' +
+                    'w-full rounded border border-transparent px-1.5 py-1 text-right hover:border-slate-200 focus:border-slate-300 focus:outline-none ' +
                     amountClass
                   }
                 />

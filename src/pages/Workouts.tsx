@@ -570,6 +570,17 @@ function CalendarSection() {
   const flat = useMemo(() => allWorkoutsFlat(doc), [doc])
   const nameFor = (key: string) => flat.find((f) => f.key === key)?.w.name
 
+  // Which workouts were actually LOGGED (done) on each date, so the calendar can
+  // show completed sessions — not just planned/assigned ones. This is what makes
+  // "Log Session" show up on the calendar.
+  const loggedKeysByDate = useMemo(() => {
+    const m: Record<string, Set<string>> = {}
+    doc.logs.forEach((l) => {
+      ;(m[l.date] ??= new Set<string>()).add(l.workoutKey)
+    })
+    return m
+  }, [doc.logs])
+
   const firstDow = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
 
@@ -597,6 +608,10 @@ function CalendarSection() {
     const isToday =
       now.getFullYear() === year && now.getMonth() === month && now.getDate() === d
     const assigned = doc.assignments[key] || []
+    const loggedKeys = loggedKeysByDate[key] || new Set<string>()
+    const assignedSet = new Set(assigned)
+    // Logged workouts that weren't also assigned that day still deserve a marker.
+    const extraLogged = [...loggedKeys].filter((k) => !assignedSet.has(k))
     cells.push(
       <button
         key={key}
@@ -610,12 +625,29 @@ function CalendarSection() {
         <span className="text-[11px] text-slate-400">{d}</span>
         {assigned.map((k, i) => {
           const nm = nameFor(k)
+          if (!nm) return null
+          const done = loggedKeys.has(k) // planned AND logged → show as done
+          return (
+            <span
+              key={`a${i}`}
+              className={
+                'truncate rounded px-1.5 py-0.5 text-[10.5px] ' +
+                (done ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700')
+              }
+            >
+              {done ? '✓ ' : ''}
+              {nm}
+            </span>
+          )
+        })}
+        {extraLogged.map((k, i) => {
+          const nm = nameFor(k)
           return nm ? (
             <span
-              key={i}
-              className="truncate rounded bg-indigo-50 px-1.5 py-0.5 text-[10.5px] text-indigo-700"
+              key={`l${i}`}
+              className="truncate rounded bg-emerald-50 px-1.5 py-0.5 text-[10.5px] text-emerald-700"
             >
-              {nm}
+              ✓ {nm}
             </span>
           ) : null
         })}
@@ -666,6 +698,15 @@ function CalendarSection() {
         {cells}
       </div>
 
+      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-400">
+        <span>
+          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">Planned</span> = added to calendar
+        </span>
+        <span>
+          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">✓ Done</span> = logged session
+        </span>
+      </div>
+
       {openDay && (
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <h4 className="mb-2 text-sm font-semibold">{openDay} — assigned workouts</h4>
@@ -698,6 +739,24 @@ function CalendarSection() {
               })
             )}
           </div>
+
+          {doc.logs.some((l) => l.date === openDay) && (
+            <div className="mb-3">
+              <div className="mb-1 text-xs font-medium text-emerald-700">✓ Logged this day</div>
+              <div className="flex flex-col gap-1.5">
+                {doc.logs
+                  .filter((l) => l.date === openDay)
+                  .map((l) => (
+                    <div
+                      key={l.id}
+                      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800"
+                    >
+                      {l.categoryName} › {l.programName} › {l.workoutName}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
 
           <div className="mb-1 text-xs text-slate-500">Assign an existing workout</div>
           <div className="mb-2 flex flex-wrap gap-2">

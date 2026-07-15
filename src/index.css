@@ -129,6 +129,12 @@ body {
 .dark .border-amber-200 { border-color: rgba(251, 191, 36, 0.3); }
 .dark .border-amber-300 { border-color: rgba(251, 191, 36, 0.4); }
 
+/* ---- emerald tints (calendar "done"/logged markers) ---- */
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.14); }
+.dark .text-emerald-700 { color: #6ee7b7; }
+.dark .text-emerald-800 { color: #a7f3d0; }
+.dark .border-emerald-200 { border-color: rgba(52, 211, 153, 0.35); }
+
 /* recharts gridlines use a light stroke; soften them in dark so charts read. */
 .dark .recharts-cartesian-grid line { stroke: var(--border); }
 .dark .recharts-text { fill: var(--text-muted); }
