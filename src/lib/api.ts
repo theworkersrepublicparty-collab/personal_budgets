@@ -17,6 +17,7 @@ import type {
   RecipeCategory,
   Transaction,
   TxnFilters,
+  WorkoutDoc,
 } from '../../shared/types'
 
 export interface EntryInput {
@@ -329,6 +330,18 @@ export const api = {
       json<{ recipe: Recipe; rowsRead: number; protein: number; carbs: number; fats: number; calories: number }>,
     )
   },
+
+  // --- Workouts ---
+  // The entire workout tab is one JSON document; fetch it, then PUT the whole
+  // thing back on change (the page debounces saves).
+  getWorkout: () => fetch('/api/workout').then(json<WorkoutDoc>),
+
+  saveWorkout: (doc: WorkoutDoc) =>
+    fetch('/api/workout', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(doc),
+    }).then(json<{ ok: true }>),
 }
 
 export interface RecipeInput {

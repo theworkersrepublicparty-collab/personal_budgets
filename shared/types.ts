@@ -167,3 +167,81 @@ export interface Recipe {
   has_image: boolean // fetch the photo separately at /api/recipes/:id/image
   created_at: string
 }
+
+// --- Workouts ------------------------------------------------------------
+// Ported from the standalone workout-draft. The whole thing is pure JSON (no
+// blobs), a deeply-nested editable tree, so it's persisted as ONE JSON
+// document row in budget.db (table `workout_state`) behind GET/PUT /api/workout.
+// That keeps it in SQLite — carrying over to another machine or a future
+// iPhone/Android build exactly like the rest of the app's data. A git-tracked
+// seed (workout-seed.ts) materializes the starter document on first run.
+//
+// A workout's stable identity is its `id`; a `workoutKey` is the composite
+// "${categoryId}::${programId}::${workoutId}" the calendar assignments and log
+// snapshots reference, so it's re-keyed when a workout moves between programs.
+
+// One column in a worksheet: a rep target and the weight used.
+export interface WorkoutCell {
+  reps: string
+  weight: string
+}
+
+export interface WorkoutExercise {
+  name: string
+  cells: WorkoutCell[]
+}
+
+// A set group (e.g. "Super Set") holding one or more exercises.
+export interface WorkoutGroup {
+  type: string
+  exercises: WorkoutExercise[]
+}
+
+export interface Workout {
+  id: string
+  name: string
+  equipment: string[]
+  weightSuggestions: string
+  notes: string
+  weeks: string[] // worksheet column headers (set columns, e.g. "Set 1 (15 reps)")
+  groups: WorkoutGroup[]
+}
+
+export interface WorkoutProgram {
+  id: string
+  name: string
+  workouts: Workout[]
+}
+
+export interface WorkoutCategory {
+  id: string
+  name: string
+  programs: WorkoutProgram[]
+}
+
+export interface WorkoutStats {
+  weight: number | null // lbs
+  goal: number | null // lbs
+  height: number | null // TOTAL inches (feet+inches combined)
+}
+
+// A dated snapshot of a workout's reps/weight as actually performed, so later
+// visits can compare "what we did" against the live, editable plan.
+export interface WorkoutLog {
+  id: string
+  date: string // 'YYYY-MM-DD'
+  workoutKey: string
+  categoryName: string
+  programName: string
+  workoutName: string
+  weeks: string[]
+  groups: WorkoutGroup[]
+}
+
+export interface WorkoutDoc {
+  stats: WorkoutStats
+  categories: WorkoutCategory[]
+  activeCategory: string
+  assignments: Record<string, string[]> // dateStr 'YYYY-MM-DD' -> workoutKey[]
+  logs: WorkoutLog[]
+}

@@ -168,6 +168,15 @@
   .action-group-label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:4px;}
   .action-group .card-actions{margin-top:0;}
 
+  /* ---------- MULTI-SELECT (batch move workouts) ---------- */
+  .select-bar{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    background:var(--panel2); border:1px solid var(--accent); border-radius:8px;
+    padding:8px 12px; margin:10px 0 14px; font-size:12.5px; flex-wrap:wrap;
+  }
+  .select-bar [data-sel-count]{color:var(--accent2); font-weight:600;}
+  input.wsel{width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;}
+
   .exercise-row-add{margin-top:8px;}
 
   .assign-popover{
@@ -310,8 +319,17 @@
     <input type="number" id="inWeight" step="0.1">
     <label>Goal weight (lbs)</label>
     <input type="number" id="inGoal" step="0.1">
-    <label>Height (inches)</label>
-    <input type="number" id="inHeight" step="0.1">
+    <label>Height</label>
+    <div style="display:flex; gap:10px;">
+      <div style="flex:1;">
+        <input type="number" id="inHeightFt" step="1" min="0" placeholder="e.g. 5">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">feet</div>
+      </div>
+      <div style="flex:1;">
+        <input type="number" id="inHeightIn" step="0.1" min="0" placeholder="e.g. 10">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">inches</div>
+      </div>
+    </div>
     <div class="explain">
       <strong>How this is calculated:</strong><br>
       • <strong>BMI</strong> = (weight in lbs ÷ (height in inches)²) × 703.<br>
@@ -734,6 +752,14 @@ function bmiLabel(bmi){
   if(bmi<30) return 'Overweight';
   return 'Obese';
 }
+// Height is stored internally as total inches (keeps BMI math simple); this
+// just presents it back in the feet-and-inches form people actually think in.
+function formatHeight(inches){
+  if(inches==null) return '—';
+  const ft = Math.floor(inches/12);
+  const inch = +(inches - ft*12).toFixed(1);
+  return `${ft}' ${inch}"`;
+}
 
 function renderKPIs(){
   const s = data.stats;
@@ -756,7 +782,7 @@ function renderKPIs(){
     </div>
     <div class="kpi">
       <div class="label">Height</div>
-      <div class="value">${s.height ?? '—'} in</div>
+      <div class="value">${formatHeight(s.height)}</div>
     </div>
   `;
 }
@@ -764,7 +790,15 @@ function renderKPIs(){
 function openGoalsModal(){
   document.getElementById('inWeight').value = data.stats.weight ?? '';
   document.getElementById('inGoal').value = data.stats.goal ?? '';
-  document.getElementById('inHeight').value = data.stats.height ?? '';
+  const h = data.stats.height;
+  if(h!=null){
+    const ft = Math.floor(h/12);
+    document.getElementById('inHeightFt').value = ft;
+    document.getElementById('inHeightIn').value = +(h - ft*12).toFixed(1);
+  } else {
+    document.getElementById('inHeightFt').value = '';
+    document.getElementById('inHeightIn').value = '';
+  }
   document.getElementById('goalsModal').classList.add('open');
 }
 document.getElementById('editGoalsBtn').onclick = openGoalsModal;
@@ -772,7 +806,10 @@ document.getElementById('goalsCancel').onclick = ()=> document.getElementById('g
 document.getElementById('goalsSave').onclick = ()=>{
   data.stats.weight = parseFloat(document.getElementById('inWeight').value) || null;
   data.stats.goal = parseFloat(document.getElementById('inGoal').value) || null;
-  data.stats.height = parseFloat(document.getElementById('inHeight').value) || null;
+  const ft = parseFloat(document.getElementById('inHeightFt').value) || 0;
+  const inch = parseFloat(document.getElementById('inHeightIn').value) || 0;
+  const totalIn = ft*12 + inch;
+  data.stats.height = totalIn > 0 ? totalIn : null;
   save(data);
   renderKPIs();
   document.getElementById('goalsModal').classList.remove('open');
@@ -1024,10 +1061,16 @@ function renderCategoryContent(){
   renderPrograms(cat);
 }
 
+// Transient (not persisted) multi-select state for batch-moving workouts.
+// Scoped to a single program at a time, so the checkboxes only show up in the
+// program you're actively selecting within.
+let workoutSelect = { progId:null, ids:new Set() };
+
 function renderPrograms(cat){
   const host = document.getElementById('programsHost');
   host.innerHTML = '';
   cat.programs.forEach(prog=>{
+    const selecting = workoutSelect.progId===prog.id;
     const card = document.createElement('div');
     card.className = 'program-card';
     card.innerHTML = `
@@ -1037,12 +1080,19 @@ function renderPrograms(cat){
           <input class="name-input" value="${prog.name}" data-rename-prog>
         </div>
         <div>
+          <button class="subtle small" data-select-prog>${selecting?'Done selecting':'Select'}</button>
           <button class="subtle small" data-add-workout>+ Workout</button>
           <button class="subtle small danger-outline" data-del-prog>Delete</button>
         </div>
       </div>
       <div class="card-body"><div data-workouts-host></div></div>
     `;
+    card.querySelector('[data-select-prog]').onclick = (e)=>{
+      e.stopPropagation();
+      // Toggle select-mode for this program (turning it on clears any other).
+      workoutSelect = selecting ? { progId:null, ids:new Set() } : { progId:prog.id, ids:new Set() };
+      renderCategoryContent();
+    };
     card.querySelector('[data-toggle]').addEventListener('click', (e)=>{
       if(e.target.closest('input,button')) return;
       card.classList.toggle('collapsed');
@@ -1073,6 +1123,35 @@ function renderPrograms(cat){
 
 function renderWorkouts(prog, host, cat){
   host.innerHTML = '';
+  const selecting = workoutSelect.progId===prog.id;
+
+  if(selecting){
+    const bar = document.createElement('div');
+    bar.className = 'select-bar';
+    bar.innerHTML = `
+      <span data-sel-count>${workoutSelect.ids.size} selected</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="subtle small" data-sel-all>Select all</button>
+        <button class="subtle small" data-sel-none>Clear</button>
+        <button class="primary small" data-sel-move ${workoutSelect.ids.size?'':'disabled'}>Move selected…</button>
+      </div>
+    `;
+    host.appendChild(bar);
+    bar.querySelector('[data-sel-all]').onclick = ()=>{
+      prog.workouts.forEach(w=>workoutSelect.ids.add(w.id));
+      renderWorkouts(prog, host, cat);
+    };
+    bar.querySelector('[data-sel-none]').onclick = ()=>{
+      workoutSelect.ids.clear();
+      renderWorkouts(prog, host, cat);
+    };
+    bar.querySelector('[data-sel-move]').onclick = (e)=>{
+      if(!workoutSelect.ids.size) return;
+      const chosen = prog.workouts.filter(w=>workoutSelect.ids.has(w.id));
+      openBatchMovePopover(e.target, cat, prog, chosen);
+    };
+  }
+
   prog.workouts.forEach(w=>{
     const workoutKey = `${cat.id}::${prog.id}::${w.id}`;
     const logCount = data.logs.filter(l=>l.workoutKey===workoutKey).length;
@@ -1082,6 +1161,7 @@ function renderWorkouts(prog, host, cat){
     card.innerHTML = `
       <div class="card-header" data-toggle>
         <div style="display:flex;align-items:center;gap:8px;">
+          ${selecting ? `<input type="checkbox" class="wsel" data-wsel ${workoutSelect.ids.has(w.id)?'checked':''} title="Select this workout to move">` : ''}
           <span class="caret">▾</span>
           <input class="name-input" value="${w.name}" data-rename-workout>
           <span class="log-count-badge" data-log-count>${logCount} logged</span>
@@ -1137,6 +1217,21 @@ function renderWorkouts(prog, host, cat){
         renderWorksheet(w, worksheetHost, null);
       }
     };
+    if(selecting){
+      const cb = card.querySelector('[data-wsel]');
+      cb.onclick = (e)=>e.stopPropagation();
+      cb.onchange = (e)=>{
+        if(e.target.checked) workoutSelect.ids.add(w.id);
+        else workoutSelect.ids.delete(w.id);
+        // Update the toolbar count/button in place instead of a full re-render,
+        // so ticking boxes doesn't collapse cards or jump the scroll position.
+        const bar = host.querySelector('.select-bar');
+        if(bar){
+          bar.querySelector('[data-sel-count]').textContent = `${workoutSelect.ids.size} selected`;
+          bar.querySelector('[data-sel-move]').disabled = workoutSelect.ids.size===0;
+        }
+      };
+    }
     host.appendChild(card);
     renderWorksheet(w, card.querySelector('[data-worksheet-host]'));
   });
@@ -1294,6 +1389,90 @@ function openMovePopover(anchor, cat, prog, w){
 
     prog.workouts = prog.workouts.filter(x=>x!==w);
     targetProg.workouts.push(w);
+    save(data);
+    pop.remove();
+    renderCategoryContent();
+    renderAnalyticsFilters(); renderAnalyticsBody();
+  };
+  setTimeout(()=>{
+    document.addEventListener('click', function handler(ev){
+      if(!pop.contains(ev.target) && ev.target!==anchor){ pop.remove(); document.removeEventListener('click',handler); }
+    });
+  },0);
+}
+
+/* ---------- BATCH MOVE (several selected workouts at once) ----------
+   Same re-keying logic as the single Move, applied to every chosen workout so
+   calendar assignments and logged sessions follow them to the new program. */
+function openBatchMovePopover(anchor, cat, prog, workouts){
+  document.querySelectorAll('.assign-popover').forEach(p=>p.remove());
+  if(!workouts.length) return;
+  const pop = document.createElement('div');
+  pop.className = 'assign-popover';
+  const rect = anchor.getBoundingClientRect();
+  pop.style.top = (window.scrollY + rect.bottom + 6) + 'px';
+  pop.style.left = (window.scrollX + rect.left - 180) + 'px';
+
+  const programOptionsHtml = (catId, selectedProgId)=>{
+    const progs = data.categories.find(c=>c.id===catId)?.programs || [];
+    return progs.map(p=>`<option value="${p.id}" ${p.id===selectedProgId?'selected':''}>${p.name}</option>`).join('');
+  };
+  const n = workouts.length;
+
+  pop.innerHTML = `
+    <span class="close-x">✕</span>
+    <h4>Move ${n} workout${n>1?'s':''}</h4>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.4;">${workouts.map(w=>w.name).join(', ')}</div>
+    <select id="moveCategory">
+      ${data.categories.map(c=>`<option value="${c.id}" ${c.id===cat.id?'selected':''}>${c.name}</option>`).join('')}
+    </select>
+    <select id="moveProgram">${programOptionsHtml(cat.id, prog.id)}</select>
+    <button class="subtle small" id="moveNewProgram" style="width:100%;margin-bottom:8px;">+ Create new program here</button>
+    <button class="primary small" id="moveConfirm" style="width:100%;">Move ${n} workout${n>1?'s':''}</button>
+  `;
+  document.body.appendChild(pop);
+
+  pop.querySelector('.close-x').onclick = ()=>pop.remove();
+  pop.querySelector('#moveCategory').onchange = (e)=>{
+    pop.querySelector('#moveProgram').innerHTML = programOptionsHtml(e.target.value, null);
+  };
+  pop.querySelector('#moveNewProgram').onclick = ()=>{
+    const targetCatId = pop.querySelector('#moveCategory').value;
+    const name = prompt('New program name:');
+    if(!name) return;
+    const targetCat = data.categories.find(c=>c.id===targetCatId);
+    const newProg = { id:uid('prog'), name, workouts:[] };
+    targetCat.programs.push(newProg);
+    save(data);
+    pop.querySelector('#moveProgram').innerHTML = programOptionsHtml(targetCatId, newProg.id);
+  };
+  pop.querySelector('#moveConfirm').onclick = ()=>{
+    const targetCatId = pop.querySelector('#moveCategory').value;
+    const targetProgId = pop.querySelector('#moveProgram').value;
+    if(!targetCatId || !targetProgId) return;
+    const targetCat = data.categories.find(c=>c.id===targetCatId);
+    const targetProg = targetCat.programs.find(p=>p.id===targetProgId);
+    if(!targetProg || targetProg===prog){ pop.remove(); return; }
+
+    workouts.forEach(w=>{
+      const oldKey = `${cat.id}::${prog.id}::${w.id}`;
+      const newKey = `${targetCat.id}::${targetProg.id}::${w.id}`;
+      Object.values(data.assignments).forEach(list=>{
+        const idx = list.indexOf(oldKey);
+        if(idx!==-1) list[idx] = newKey;
+      });
+      data.logs.forEach(log=>{
+        if(log.workoutKey===oldKey){
+          log.workoutKey = newKey;
+          log.categoryName = targetCat.name;
+          log.programName = targetProg.name;
+        }
+      });
+      prog.workouts = prog.workouts.filter(x=>x!==w);
+      targetProg.workouts.push(w);
+    });
+
+    workoutSelect = { progId:null, ids:new Set() };
     save(data);
     pop.remove();
     renderCategoryContent();

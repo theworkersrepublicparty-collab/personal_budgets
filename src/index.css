@@ -11,3 +11,124 @@ body,
 body {
   @apply bg-slate-100 text-ink antialiased;
 }
+
+/* ============================================================================
+   DARK MODE
+   ----------------------------------------------------------------------------
+   The whole app is styled with a small set of Tailwind color utilities
+   (bg-white, text-slate-500, border-slate-200, …). Rather than add a `dark:`
+   variant to every element in every component, we remap those specific classes
+   here, scoped under `.dark`. That class is put on <html> by the header toggle
+   (and by a small script in index.html before first paint, so there's no
+   flash). When `.dark` is absent, none of this applies and light mode is
+   exactly as it always was.
+
+   Why it works: `.dark .bg-white` is a more specific selector than plain
+   `.bg-white`, so it wins whenever dark mode is on — no `!important` needed.
+
+   To tweak the dark look, change the variables in the first block below; every
+   surface/text/border reads from them.
+   ========================================================================== */
+.dark {
+  /* Tells the browser to render native controls (inputs, checkboxes, date
+     pickers, scrollbars) in dark — one line that themes all the built-in bits. */
+  color-scheme: dark;
+
+  --bg: #0d1117; /* app background */
+  --surface: #161b22; /* cards / panels (was bg-white) */
+  --surface-2: #1c2230; /* secondary panels (was bg-slate-50) */
+  --surface-3: #232b3b; /* chips / hover fills (was bg-slate-100/200) */
+  --border: #2a3342; /* hairlines (was border-slate-100/200) */
+  --border-strong: #3a4457; /* stronger borders (was border-slate-300/400) */
+  --text: #e6edf3; /* primary text (was text-ink / slate-800/700) */
+  --text-2: #c9d3df;
+  --text-3: #a7b2c0; /* was text-slate-600 */
+  --text-muted: #8b95a4; /* was text-slate-500 */
+  --text-faint: #7d8798; /* was text-slate-400/300 */
+  --primary: #4f46e5; /* primary buttons (was bg-ink navy) */
+  --primary-hover: #4338ca;
+}
+
+/* ---- app frame ---- */
+.dark body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* ---- surfaces ---- */
+.dark .bg-white { background-color: var(--surface); }
+.dark .bg-white\/70 { background-color: rgba(22, 27, 34, 0.7); }
+.dark .bg-slate-50 { background-color: var(--surface-2); }
+.dark .bg-slate-50\/60 { background-color: rgba(28, 34, 48, 0.6); }
+.dark .bg-slate-50\/40 { background-color: rgba(28, 34, 48, 0.4); }
+.dark .bg-slate-100 { background-color: var(--surface-3); }
+.dark .bg-slate-200 { background-color: #2b3444; }
+
+/* ---- text ---- */
+.dark .text-ink { color: var(--text); }
+.dark .text-slate-800 { color: var(--text); }
+.dark .text-slate-700 { color: var(--text-2); }
+.dark .text-slate-600 { color: var(--text-3); }
+.dark .text-slate-500 { color: var(--text-muted); }
+.dark .text-slate-400 { color: var(--text-faint); }
+.dark .text-slate-300 { color: #6b7688; }
+
+/* ---- borders ---- */
+.dark .border-slate-50,
+.dark .border-slate-100,
+.dark .border-slate-200 { border-color: var(--border); }
+.dark .border-slate-300,
+.dark .border-slate-400 { border-color: var(--border-strong); }
+.dark .border-white { border-color: var(--surface); }
+
+/* ---- primary (ink) buttons ---- */
+.dark .bg-ink { background-color: var(--primary); }
+.dark .border-ink { border-color: var(--primary); }
+.dark .hover\:bg-slate-700:hover { background-color: var(--primary-hover); }
+
+/* ---- hovers ---- */
+.dark .hover\:bg-slate-50:hover { background-color: var(--surface-2); }
+.dark .hover\:bg-slate-100:hover { background-color: var(--surface-3); }
+.dark .hover\:bg-slate-300:hover { background-color: #2b3444; }
+.dark .hover\:bg-white:hover { background-color: var(--surface); }
+.dark .hover\:text-ink:hover { color: var(--text); }
+.dark .hover\:text-slate-600:hover { color: var(--text-3); }
+.dark .hover\:text-slate-700:hover { color: var(--text-2); }
+.dark .hover\:border-slate-200:hover,
+.dark .hover\:border-slate-300:hover,
+.dark .hover\:border-slate-400:hover { border-color: var(--border-strong); }
+
+/* ---- focus states (worksheet cells highlight on focus; without these the
+   cell fell back to a light fill and typed text was invisible in dark) ---- */
+.dark .focus\:bg-slate-100:focus { background-color: var(--surface-3); }
+.dark .focus\:bg-white:focus { background-color: var(--surface); }
+.dark .focus\:border-slate-300:focus,
+.dark .focus\:border-slate-400:focus { border-color: var(--border-strong); }
+
+/* ---- indigo accents (active tabs, select mode) ---- */
+.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.16); }
+.dark .bg-indigo-50\/40 { background-color: rgba(99, 102, 241, 0.1); }
+.dark .text-indigo-900 { color: #c7d2fe; }
+.dark .text-indigo-700 { color: #a5b4fc; }
+.dark .text-indigo-600 { color: #818cf8; }
+.dark .border-indigo-200 { border-color: rgba(129, 140, 248, 0.35); }
+.dark .border-indigo-300 { border-color: rgba(129, 140, 248, 0.5); }
+.dark .hover\:bg-indigo-100:hover { background-color: rgba(99, 102, 241, 0.26); }
+.dark .hover\:text-indigo-800:hover { color: #c7d2fe; }
+.dark .ring-indigo-300 { --tw-ring-color: rgba(129, 140, 248, 0.5); }
+
+/* ---- red / amber tints (delete zones, restore warning) ---- */
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.13); }
+.dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.2); }
+.dark .border-red-200 { border-color: rgba(248, 113, 113, 0.35); }
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.12); }
+.dark .bg-amber-50\/40 { background-color: rgba(245, 158, 11, 0.08); }
+.dark .text-amber-900 { color: #fcd34d; }
+.dark .text-amber-600,
+.dark .text-amber-500 { color: #fbbf24; }
+.dark .border-amber-200 { border-color: rgba(251, 191, 36, 0.3); }
+.dark .border-amber-300 { border-color: rgba(251, 191, 36, 0.4); }
+
+/* recharts gridlines use a light stroke; soften them in dark so charts read. */
+.dark .recharts-cartesian-grid line { stroke: var(--border); }
+.dark .recharts-text { fill: var(--text-muted); }

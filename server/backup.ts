@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto'
 import * as XLSX from 'xlsx'
 import { db } from './db.ts'
 
-export type BackupGroup = 'budgets' | 'planner' | 'properties' | 'recipes'
+export type BackupGroup = 'budgets' | 'planner' | 'properties' | 'recipes' | 'workouts'
 
-export const ALL_GROUPS: BackupGroup[] = ['budgets', 'planner', 'properties', 'recipes']
+export const ALL_GROUPS: BackupGroup[] = ['budgets', 'planner', 'properties', 'recipes', 'workouts']
 
 // Which sheet names make up each group. The first sheet is the group's "marker"
 // used to detect the group's presence in an uploaded file.
@@ -21,6 +21,7 @@ const GROUP_SHEETS: Record<BackupGroup, string[]> = {
   planner: ['Planner'],
   properties: ['Properties', 'PropertyEntries', 'Leases', 'PropertyCategories'],
   recipes: ['Recipes'],
+  workouts: ['Workout'],
 }
 
 // Column order per sheet — keeps exports tidy and gives empty tables a header row.
@@ -43,6 +44,8 @@ const COLS = {
     'id', 'title', 'category', 'cook_time', 'protein', 'carbs', 'fats', 'calories',
     'instructions', 'description', 'created_at',
   ],
+  // The whole workout tab is one JSON document, so it rides in a single cell.
+  Workout: ['doc'],
 } as const
 
 export function parseGroups(raw: unknown): BackupGroup[] {
@@ -113,6 +116,12 @@ export function buildBackup(groups: BackupGroup[]): Buffer {
            FROM recipes ORDER BY id`),
     )
   }
+  if (groups.includes('workouts')) {
+    const row = db.prepare('SELECT doc FROM workout_state WHERE id = 1').get() as
+      | { doc: string }
+      | undefined
+    add('Workout', row ? [{ doc: row.doc }] : [])
+  }
 
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 }
@@ -139,7 +148,9 @@ export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<
     const ws = wb.Sheets[name]
     return ws ? (XLSX.utils.sheet_to_json(ws, { defval: null }) as Record<string, unknown>[]) : []
   }
-  const counts: Record<BackupGroup, number> = { budgets: 0, planner: 0, properties: 0, recipes: 0 }
+  const counts: Record<BackupGroup, number> = {
+    budgets: 0, planner: 0, properties: 0, recipes: 0, workouts: 0,
+  }
 
   db.exec('BEGIN')
   try {
@@ -301,6 +312,27 @@ export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<
           str(r.created_at) || nowStamp(),
         )
         counts.recipes++
+      }
+    }
+
+    if (groups.includes('workouts')) {
+      // The document rides in a single 'doc' cell — parse it back and upsert the
+      // one workout_state row. A malformed cell just leaves existing data alone.
+      const docRow = rows('Workout')[0]
+      const raw = docRow ? str(docRow.doc) : ''
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.categories)) {
+            db.prepare(
+              `INSERT INTO workout_state (id, doc) VALUES (1, ?)
+               ON CONFLICT(id) DO UPDATE SET doc = excluded.doc`,
+            ).run(JSON.stringify(parsed))
+            counts.workouts++
+          }
+        } catch {
+          /* leave existing workout data untouched on a bad cell */
+        }
       }
     }
 

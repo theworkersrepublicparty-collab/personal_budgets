@@ -5,13 +5,14 @@ import { api } from '../lib/api'
 // The user-facing "tabs" you can back up, each mapped to the sheet names the
 // server writes. `marker` sheets are what we look for to detect a tab inside an
 // uploaded file. Keep this in sync with server/backup.ts.
-type GroupKey = 'budgets' | 'planner' | 'properties' | 'recipes'
+type GroupKey = 'budgets' | 'planner' | 'properties' | 'recipes' | 'workouts'
 
 const GROUPS: { key: GroupKey; label: string; emoji: string; sheets: string[]; note?: string }[] = [
   { key: 'budgets', label: 'Budgets & Transactions', emoji: '🧮', sheets: ['Budgets', 'Transactions'] },
   { key: 'planner', label: 'Yearly Planner', emoji: '📅', sheets: ['Planner'] },
   { key: 'properties', label: 'Properties', emoji: '🏠', sheets: ['Properties', 'PropertyEntries', 'Leases', 'PropertyCategories'] },
   { key: 'recipes', label: 'Food Recipes', emoji: '🍽️', sheets: ['Recipes'], note: 'photos not included' },
+  { key: 'workouts', label: 'Workouts', emoji: '🏋️', sheets: ['Workout'] },
 ]
 
 export default function BackupRestore({ onClose }: { onClose: () => void }) {

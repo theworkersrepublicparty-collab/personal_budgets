@@ -8,6 +8,7 @@ import { normalizeRow, guessMapping } from './ingest.ts'
 import { matchCategory } from './rules.ts'
 import { seedIfEmpty } from './seed.ts'
 import { seedRecipesIfEmpty } from './recipe-seed.ts'
+import { seedWorkoutIfEmpty } from './workout-seed.ts'
 import { buildBackup, restoreBackup, parseGroups } from './backup.ts'
 import type {
   Budget,
@@ -26,11 +27,13 @@ import type {
   RecipeCategory,
   Transaction,
   TxnFilters,
+  WorkoutDoc,
 } from '../shared/types.ts'
 
 migrate()
 seedIfEmpty()
 seedRecipesIfEmpty()
+seedWorkoutIfEmpty()
 
 const app = express()
 app.use(cors())
@@ -1068,6 +1071,44 @@ app.post('/api/recipes/:id/import-cronometer', upload.single('file'), (req, res)
   )
   const row = db.prepare(`SELECT ${RECIPE_COLUMNS} FROM recipes WHERE id = ?`).get(id) as unknown as RecipeRow
   res.json({ recipe: rowToRecipe(row), rowsRead, ...macros })
+})
+
+// --- Workouts --------------------------------------------------------------
+// The whole workout tab is one JSON document in workout_state (row id = 1),
+// seeded on first run. The client fetches it, edits in memory, and PUTs the
+// full document back (debounced). Keeping it a single blob mirrors how pure-JSON
+// state is the most portable thing to carry to a future mobile build.
+app.get('/api/workout', (_req, res) => {
+  const row = db.prepare('SELECT doc FROM workout_state WHERE id = 1').get() as
+    | { doc: string }
+    | undefined
+  if (!row) return res.status(404).json({ error: 'workout document not initialized' })
+  try {
+    res.json(JSON.parse(row.doc) as WorkoutDoc)
+  } catch {
+    res.status(500).json({ error: 'stored workout document is corrupt' })
+  }
+})
+
+app.put('/api/workout', (req, res) => {
+  const doc = req.body as WorkoutDoc
+  // Light shape check — enough to reject obviously malformed writes without
+  // trying to validate the whole nested tree.
+  if (
+    !doc ||
+    typeof doc !== 'object' ||
+    !Array.isArray(doc.categories) ||
+    !Array.isArray(doc.logs) ||
+    typeof doc.assignments !== 'object' ||
+    doc.assignments === null
+  ) {
+    return res.status(400).json({ error: 'invalid workout document' })
+  }
+  db.prepare(
+    `INSERT INTO workout_state (id, doc) VALUES (1, ?)
+     ON CONFLICT(id) DO UPDATE SET doc = excluded.doc`,
+  ).run(JSON.stringify(doc))
+  res.json({ ok: true })
 })
 
 // --- Backup / Restore ------------------------------------------------------

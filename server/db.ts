@@ -128,6 +128,16 @@ export function migrate(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_recipes_category ON recipes(category);
+
+    -- Workouts. The whole workout tab (stats, categories > programs > workouts
+    -- with their worksheets, calendar assignments, and logged sessions) is a
+    -- single JSON document. It's pure JSON (no blobs), so one row keeps it in
+    -- SQLite and portable to a future mobile build — same story as recipes.
+    -- Enforced single row via the id = 1 check.
+    CREATE TABLE IF NOT EXISTS workout_state (
+      id  INTEGER PRIMARY KEY CHECK (id = 1),
+      doc TEXT NOT NULL
+    );
   `)
 
   // Columns added after property_entries shipped — add them if missing.
