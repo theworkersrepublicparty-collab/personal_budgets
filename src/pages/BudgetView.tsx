@@ -68,6 +68,15 @@ export default function BudgetView() {
     a.localeCompare(b),
   )
 
+  // Distinct account labels the user has actually used, powering the Source
+  // autocomplete on the add/edit form. Built live from the loaded transactions,
+  // so it stays dynamic with no fixed list to maintain (empty until they add one).
+  const sourceList = [
+    ...new Set(
+      txns.map((t) => t.source).filter((s): s is string => !!s && s.trim().length > 0),
+    ),
+  ].sort((a, b) => a.localeCompare(b))
+
   const load = useCallback(async () => {
     const [b, t, k, dr] = await Promise.all([
       api.getBudget(budgetId),
@@ -405,6 +414,7 @@ export default function BudgetView() {
       {adding && (
         <TxnForm
           categories={categoryList}
+          sources={sourceList}
           onCancel={() => setAdding(false)}
           onSubmit={createTxn}
         />
@@ -414,6 +424,7 @@ export default function BudgetView() {
         <TxnForm
           existing={editing}
           categories={categoryList}
+          sources={sourceList}
           onCancel={() => setEditing(null)}
           onSubmit={saveEdit}
         />

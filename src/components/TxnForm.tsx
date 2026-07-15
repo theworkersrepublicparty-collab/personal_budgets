@@ -7,11 +7,13 @@ import type { TxnInput } from '../lib/api'
 export default function TxnForm({
   existing,
   categories,
+  sources,
   onCancel,
   onSubmit,
 }: {
   existing?: Transaction | null
   categories: string[]
+  sources: string[] // account labels already used — powers the Source suggestions
   onCancel: () => void
   onSubmit: (data: TxnInput) => Promise<void>
 }) {
@@ -124,11 +126,24 @@ export default function TxnForm({
           <Field label="Source / account (optional)">
             <input
               type="text"
+              // Native type-ahead: as you type, the browser filters this list of
+              // accounts you've used before (e.g. type "Credit" → "Credit Union").
+              list="txn-source-suggestions"
               value={source}
               placeholder="e.g. Chase Card"
               onChange={(e) => setSource(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
+            <datalist id="txn-source-suggestions">
+              {sources.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+            <span className="mt-1 text-[11px] text-slate-400">
+              {sources.length
+                ? 'Start typing — suggestions come from accounts you’ve used before.'
+                : 'No saved accounts yet — type one and it’ll be suggested next time.'}
+            </span>
           </Field>
         </div>
 
