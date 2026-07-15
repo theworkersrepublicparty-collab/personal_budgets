@@ -1121,7 +1121,7 @@ app.get('/api/export', (req, res) => {
     'Content-Type',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   )
-  res.setHeader('Content-Disposition', `attachment; filename="budgets-backup-${stamp}.xlsx"`)
+  res.setHeader('Content-Disposition', `attachment; filename="jqtools-backup-${stamp}.xlsx"`)
   res.send(buf)
 })
 
@@ -1139,6 +1139,6 @@ app.post('/api/import-backup', upload.single('file'), (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`\n  💰 Personal Budgets API running at http://localhost:${PORT}`)
+  console.log(`\n  🐶 JQTools API running at http://localhost:${PORT}`)
   console.log(`     Open the app at http://localhost:5173\n`)
 })

@@ -49,7 +49,7 @@ export default function BackupRestore({ onClose }: { onClose: () => void }) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `budgets-backup-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.download = `jqtools-backup-${new Date().toISOString().slice(0, 10)}.xlsx`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -75,7 +75,7 @@ export default function BackupRestore({ onClose }: { onClose: () => void }) {
       const names = new Set(wb.SheetNames)
       const found = GROUPS.filter((g) => g.sheets.some((s) => names.has(s))).map((g) => g.key)
       if (!found.length) {
-        setFileError("This file doesn't look like a Personal Budgets backup.")
+        setFileError("This file doesn't look like a JQTools backup.")
         return
       }
       setFoundGroups(found)

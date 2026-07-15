@@ -26,7 +26,7 @@
 > `budget.db` over yourself — or use the built-in **💾 Backup** button (see
 > **[Your data & backups](#your-data--backups)** below).
 
-# 💰 Personal Budgets
+# 🐶 JQTools
 
 A **local-only** personal-finance workspace. Track your spending, plan your
 year, manage rental properties, size up deals, and keep your recipes — all in
