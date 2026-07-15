@@ -566,6 +566,24 @@ function CalendarSection() {
   const [month, setMonth] = useState(now.getMonth())
   const [openDay, setOpenDay] = useState<string | null>(null)
   const [pick, setPick] = useState({ category: '', program: '', workout: '' })
+  const calRef = useRef<HTMLDivElement>(null)
+
+  // Click anywhere off the calendar (or press Esc) to hide the open day panel.
+  useEffect(() => {
+    if (!openDay) return
+    const onDown = (e: MouseEvent) => {
+      if (calRef.current && !calRef.current.contains(e.target as Node)) setOpenDay(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenDay(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [openDay])
 
   const flat = useMemo(() => allWorkoutsFlat(doc), [doc])
   const nameFor = (key: string) => flat.find((f) => f.key === key)?.w.name
@@ -677,10 +695,19 @@ function CalendarSection() {
       d.assignments[key] = (d.assignments[key] || []).filter((x) => x !== wkey)
     })
   }
+  // Delete a logged session outright — clears it from the calendar's green ✓
+  // marker and from analytics (a log is the "what I actually did" record).
+  function removeLog(id: string) {
+    if (!confirm('Delete this logged session? It will be removed from the calendar and analytics.')) return
+    mutate((d) => {
+      d.logs = d.logs.filter((l) => l.id !== id)
+    })
+  }
 
   const selectCls = 'rounded-lg border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-50 disabled:text-slate-300'
 
   return (
+    <div ref={calRef}>
     <Section
       title="Calendar"
       right={
@@ -749,9 +776,16 @@ function CalendarSection() {
                   .map((l) => (
                     <div
                       key={l.id}
-                      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800"
+                      className="flex items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800"
                     >
-                      {l.categoryName} › {l.programName} › {l.workoutName}
+                      <span>{l.categoryName} › {l.programName} › {l.workoutName}</span>
+                      <button
+                        onClick={() => removeLog(l.id)}
+                        className={BTN_SM}
+                        title="Delete this logged session (removes it from the calendar and analytics)"
+                      >
+                        Delete
+                      </button>
                     </div>
                   ))}
               </div>
@@ -804,6 +838,7 @@ function CalendarSection() {
         </div>
       )}
     </Section>
+    </div>
   )
 }
 
