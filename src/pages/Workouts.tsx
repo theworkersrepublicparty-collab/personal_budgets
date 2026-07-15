@@ -544,7 +544,10 @@ function GoalModal({ stats, onClose }: { stats: WorkoutStats; onClose: () => voi
               </tr>
             </tbody>
           </table>
-          <div className="mt-2">A rough screen — it ignores muscle &amp; build, so treat it as a loose signal, not a verdict.</div>
+          <div className="mt-2">
+            Standard <a href="https://www.cdc.gov/bmi/adult-calculator/bmi-categories.html" target="_blank" rel="noreferrer" className="text-indigo-600 underline hover:text-indigo-800">CDC</a> ranges.
+            A rough screen that ignores muscle &amp; build → a loose signal, not a verdict.
+          </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
