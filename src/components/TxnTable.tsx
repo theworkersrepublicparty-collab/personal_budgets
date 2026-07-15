@@ -299,6 +299,7 @@ function ColumnFilter({ column }: { column: Column<Transaction, unknown> }) {
 function CheckboxFilter({ column }: { column: Column<Transaction, unknown> }) {
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const selected = (column.getFilterValue() as string[] | undefined) ?? []
 
@@ -321,10 +322,16 @@ function CheckboxFilter({ column }: { column: Column<Transaction, unknown> }) {
     setOpen(true)
   }
 
-  // Close on scroll/resize so the fixed menu never floats away from its button.
+  // Close on page/table scroll or resize so the fixed menu never floats away
+  // from its button — but IGNORE scrolls that happen inside the menu itself
+  // (its own checkbox list scrolling), otherwise the wheel/scrollbar would slam
+  // the menu shut the instant you tried to scroll it.
   useEffect(() => {
     if (!open) return
-    const close = () => setOpen(false)
+    const close = (e: Event) => {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -349,6 +356,7 @@ function CheckboxFilter({ column }: { column: Column<Transaction, unknown> }) {
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div
+            ref={menuRef}
             style={{ top: pos.top, left: pos.left }}
             className="fixed z-20 max-h-64 w-52 overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs font-normal normal-case shadow-lg"
           >
