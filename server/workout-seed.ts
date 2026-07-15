@@ -1,5 +1,5 @@
 // Starter workout document, seeded on first run so the Workout tab isn't empty.
-// Like recipe-seed.ts, this file is tracked in git (unlike budget.db) — it's the
+// Like recipe-seed.ts, this file is tracked in git (unlike budget.db), it's the
 // one part of the workout data meant to travel with the app itself. The starter
 // set (transcribed from the Beachbody Body Beast worksheets) is materialized
 // into a single JSON row in SQLite the first time the app runs; after that it's

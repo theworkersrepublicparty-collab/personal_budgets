@@ -1,6 +1,6 @@
 // Thin wrapper around Node 24's built-in SQLite (node:sqlite).
 // Synchronous API, zero native compilation. If you ever want to swap to
-// better-sqlite3, only this file needs to change — the rest of the server
+// better-sqlite3, only this file needs to change, the rest of the server
 // uses the `db` export's prepare/exec interface.
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
@@ -9,8 +9,10 @@ import { dirname, join } from 'node:path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // budget.db lives at the project root, next to package.json. This single file
-// IS your data — copy it anywhere to back up or move your numbers.
-export const DB_PATH = join(__dirname, '..', 'budget.db')
+// IS your data, copy it anywhere to back up or move your numbers.
+// JQTOOLS_DB points somewhere else, which is how tests get a throwaway database
+// instead of touching your real one. Unset (the normal case) = budget.db.
+export const DB_PATH = process.env.JQTOOLS_DB || join(__dirname, '..', 'budget.db')
 
 export const db = new DatabaseSync(DB_PATH)
 
@@ -109,7 +111,7 @@ export function migrate(): void {
     );
 
     -- Food recipes. Photos live here as blobs so the whole thing (like the
-    -- rest of the app) is one portable file — the same format a future
+    -- rest of the app) is one portable file, the same format a future
     -- iPhone/Android build would read on-device.
     CREATE TABLE IF NOT EXISTS recipes (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,7 +134,7 @@ export function migrate(): void {
     -- Workouts. The whole workout tab (stats, categories > programs > workouts
     -- with their worksheets, calendar assignments, and logged sessions) is a
     -- single JSON document. It's pure JSON (no blobs), so one row keeps it in
-    -- SQLite and portable to a future mobile build — same story as recipes.
+    -- SQLite and portable to a future mobile build, same story as recipes.
     -- Enforced single row via the id = 1 check.
     CREATE TABLE IF NOT EXISTS workout_state (
       id  INTEGER PRIMARY KEY CHECK (id = 1),
@@ -140,17 +142,17 @@ export function migrate(): void {
     );
   `)
 
-  // Columns added after property_entries shipped — add them if missing.
+  // Columns added after property_entries shipped, add them if missing.
   ensureColumn('property_entries', 'paid', 'INTEGER NOT NULL DEFAULT 1')
   ensureColumn('property_entries', 'lease_id', 'INTEGER')
 
   // User-set account label on a transaction (e.g. "Chase Card" vs "Checking"),
   // filled in on import or when adding a row by hand. Distinct from source_file
-  // (the auto-captured filename) — this one is yours to name.
+  // (the auto-captured filename), this one is yours to name.
   ensureColumn('transactions', 'source', 'TEXT')
 
   // The recipes table briefly shipped with an `image_path` column (files on
-  // disk) before switching to blob storage for portability — add the blob
+  // disk) before switching to blob storage for portability, add the blob
   // columns if an older recipes table is already on disk. image_path is left
   // in place, unused, rather than attempting a destructive column drop.
   ensureColumn('recipes', 'image', 'BLOB')

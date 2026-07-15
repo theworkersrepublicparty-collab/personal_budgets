@@ -24,14 +24,14 @@ body {
    exactly as it always was.
 
    Why it works: `.dark .bg-white` is a more specific selector than plain
-   `.bg-white`, so it wins whenever dark mode is on — no `!important` needed.
+   `.bg-white`, so it wins whenever dark mode is on, no `!important` needed.
 
    To tweak the dark look, change the variables in the first block below; every
    surface/text/border reads from them.
    ========================================================================== */
 .dark {
   /* Tells the browser to render native controls (inputs, checkboxes, date
-     pickers, scrollbars) in dark — one line that themes all the built-in bits. */
+     pickers, scrollbars) in dark, one line that themes all the built-in bits. */
   color-scheme: dark;
 
   --bg: #0d1117; /* app background */
@@ -104,6 +104,21 @@ body {
 .dark .focus\:bg-white:focus { background-color: var(--surface); }
 .dark .focus\:border-slate-300:focus,
 .dark .focus\:border-slate-400:focus { border-color: var(--border-strong); }
+
+/* ---- "Choose file" buttons ----
+   Tailwind's `file:bg-slate-100` compiles to a ::file-selector-button selector,
+   which is a different selector from plain `.bg-slate-100`, so the surface
+   remap above never reached it. Meanwhile `color-scheme: dark` flips the
+   button's own default text to white -> white text on a near-white button,
+   invisible in dark. Remap the button's fill and state its text color outright.
+   (Used by the Backup & Restore file picker.) */
+.dark .file\:bg-slate-100::file-selector-button {
+  background-color: var(--surface-3);
+  color: var(--text);
+}
+.dark .hover\:file\:bg-slate-200:hover::file-selector-button {
+  background-color: #2b3444;
+}
 
 /* ---- indigo accents (active tabs, select mode) ---- */
 .dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.16); }

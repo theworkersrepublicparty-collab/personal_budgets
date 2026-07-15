@@ -1,5 +1,5 @@
 // Manual categorization rules. A rule is a keyword -> category that YOU write.
-// We only MATCH descriptions against your rules — nothing is ever guessed or
+// We only MATCH descriptions against your rules, nothing is ever guessed or
 // auto-derived. Used to apply your rules to blank rows and to fresh imports.
 
 // Given a description and your rules dict, return the matching category (or

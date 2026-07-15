@@ -1,22 +1,30 @@
-// Backup / restore of user data as a single .xlsx workbook.
+// Backup / restore of user data, in either of two formats:
 //
-// Each selectable "tab" the user sees in the app maps to a GROUP here, and each
-// group owns one or more sheets in the workbook. Download writes the chosen
-// groups' sheets; restore REPLACES every table in the chosen groups with the
-// rows found in the file (per-tab replace — tabs not in the file are left
-// alone). Recipe photos (BLOBs) are intentionally excluded: a spreadsheet can't
-// hold them, and budget.db itself remains the photos-included full backup.
+//   .xlsx  -> a spreadsheet you can open and read in Excel. Recipe photos are
+//            left out (a spreadsheet cell can't hold an image).
+//   .json  -> a plain-text file that DOES carry recipe photos, embedded as
+//            base64. This makes JSON the true "everything you own" portable
+//            backup, a text version of budget.db.
+//
+// Both formats carry the same tables, so the two are interchangeable apart from
+// photos. Each selectable "tab" the user sees in the app maps to a GROUP here,
+// and each group owns one or more tables. Download writes the chosen groups'
+// tables; restore REPLACES every table in the chosen groups with the rows found
+// in the file (per-tab replace, tabs not in the file are left alone).
 import { createHash } from 'node:crypto'
 import * as XLSX from 'xlsx'
 import { db } from './db.ts'
 
 export type BackupGroup = 'budgets' | 'planner' | 'properties' | 'recipes' | 'workouts'
+export type BackupFormat = 'xlsx' | 'json'
 
 export const ALL_GROUPS: BackupGroup[] = ['budgets', 'planner', 'properties', 'recipes', 'workouts']
 
-// Which sheet names make up each group. The first sheet is the group's "marker"
-// used to detect the group's presence in an uploaded file.
-const GROUP_SHEETS: Record<BackupGroup, string[]> = {
+// Which table names make up each group. The first is the group's "marker" used
+// to detect the group's presence in an uploaded file. In .xlsx these are sheet
+// names; in .json they're the keys under `tables`. Same names either way, so
+// group detection is shared.
+const GROUP_TABLES: Record<BackupGroup, string[]> = {
   budgets: ['Budgets', 'Transactions'],
   planner: ['Planner'],
   properties: ['Properties', 'PropertyEntries', 'Leases', 'PropertyCategories'],
@@ -24,7 +32,8 @@ const GROUP_SHEETS: Record<BackupGroup, string[]> = {
   workouts: ['Workout'],
 }
 
-// Column order per sheet — keeps exports tidy and gives empty tables a header row.
+// Column order per table, keeps exports tidy and gives empty tables a header
+// row. Photo columns are appended for JSON only (see PHOTO_COLS).
 const COLS = {
   Budgets: ['id', 'name', 'type', 'config', 'created_at'],
   Transactions: [
@@ -48,6 +57,18 @@ const COLS = {
   Workout: ['doc'],
 } as const
 
+// Photo columns, added to Recipes in the JSON format only.
+const PHOTO_COLS = ['image_b64', 'image_mime']
+
+type TableName = keyof typeof COLS
+type Row = Record<string, unknown>
+
+// The neutral shape both formats read and write. Keyed by table name.
+type Tables = Partial<Record<TableName, Row[]>>
+
+export const JSON_FORMAT_ID = 'jqtools-backup'
+const JSON_VERSION = 1
+
 export function parseGroups(raw: unknown): BackupGroup[] {
   const list = Array.isArray(raw)
     ? raw.map(String)
@@ -58,42 +79,30 @@ export function parseGroups(raw: unknown): BackupGroup[] {
   return picked.length ? picked : ALL_GROUPS
 }
 
-// --- Export ---------------------------------------------------------------
-function sheetFrom(cols: readonly string[], rows: Record<string, unknown>[]): XLSX.WorkSheet {
-  if (rows.length === 0) return XLSX.utils.aoa_to_sheet([cols as string[]])
-  return XLSX.utils.json_to_sheet(rows, { header: cols as string[] })
+export function parseFormat(raw: unknown): BackupFormat {
+  return String(raw ?? '').toLowerCase() === 'json' ? 'json' : 'xlsx'
 }
 
-export function buildBackup(groups: BackupGroup[]): Buffer {
-  const wb = XLSX.utils.book_new()
-  const add = (name: keyof typeof COLS, rows: Record<string, unknown>[]) =>
-    XLSX.utils.book_append_sheet(wb, sheetFrom(COLS[name], rows), name)
-  const all = (sql: string) => db.prepare(sql).all() as Record<string, unknown>[]
+// --- Collect (db -> neutral tables) ---------------------------------------
+function collect(groups: BackupGroup[], withPhotos: boolean): Tables {
+  const out: Tables = {}
+  const all = (sql: string) => db.prepare(sql).all() as Row[]
 
   if (groups.includes('budgets')) {
-    add('Budgets', all('SELECT id, name, type, config, created_at FROM budgets ORDER BY id'))
-    add(
-      'Transactions',
-      all(`SELECT id, budget_id, txn_date, description, amount, direction, category,
-                  section, source, source_file, created_at
-           FROM transactions ORDER BY id`),
-    )
+    out.Budgets = all('SELECT id, name, type, config, created_at FROM budgets ORDER BY id')
+    out.Transactions = all(`SELECT id, budget_id, txn_date, description, amount, direction, category,
+                                   section, source, source_file, created_at
+                            FROM transactions ORDER BY id`)
   }
   if (groups.includes('planner')) {
-    add('Planner', all('SELECT id, kind, name, monthly, note, sort_order FROM planner_items ORDER BY id'))
+    out.Planner = all('SELECT id, kind, name, monthly, note, sort_order FROM planner_items ORDER BY id')
   }
   if (groups.includes('properties')) {
-    add('Properties', all('SELECT id, name, address, config, created_at FROM properties ORDER BY id'))
-    add(
-      'PropertyEntries',
-      all(`SELECT id, property_id, entry_date, kind, category, amount, note, paid, lease_id
-           FROM property_entries ORDER BY id`),
-    )
-    add(
-      'Leases',
-      all(`SELECT id, property_id, tenant, start_month, end_month, monthly_rent, note, created_at
-           FROM leases ORDER BY id`),
-    )
+    out.Properties = all('SELECT id, name, address, config, created_at FROM properties ORDER BY id')
+    out.PropertyEntries = all(`SELECT id, property_id, entry_date, kind, category, amount, note, paid, lease_id
+                               FROM property_entries ORDER BY id`)
+    out.Leases = all(`SELECT id, property_id, tenant, start_month, end_month, monthly_rent, note, created_at
+                      FROM leases ORDER BY id`)
     const catRow = db
       .prepare("SELECT value FROM app_settings WHERE key = 'propertyCategories'")
       .get() as { value: string } | undefined
@@ -106,48 +115,114 @@ export function buildBackup(groups: BackupGroup[]): Buffer {
         /* ignore */
       }
     }
-    add('PropertyCategories', cats.map((c) => ({ category: c })))
+    out.PropertyCategories = cats.map((c) => ({ category: c }))
   }
   if (groups.includes('recipes')) {
-    add(
-      'Recipes',
-      all(`SELECT id, title, category, cook_time, protein, carbs, fats, calories,
-                  instructions, description, created_at
-           FROM recipes ORDER BY id`),
-    )
+    // Photos are pulled only for JSON: base64 of the stored blob, alongside the
+    // mime type so the app can render it again after a restore.
+    const cols = withPhotos ? 'image, image_mime' : null
+    const rows = all(`SELECT id, title, category, cook_time, protein, carbs, fats, calories,
+                             instructions, description, created_at${cols ? `, ${cols}` : ''}
+                      FROM recipes ORDER BY id`)
+    out.Recipes = withPhotos
+      ? rows.map(({ image, image_mime, ...r }) => ({
+          ...r,
+          image_b64: image ? Buffer.from(image as Uint8Array).toString('base64') : null,
+          image_mime: image ? (image_mime ?? null) : null,
+        }))
+      : rows
   }
   if (groups.includes('workouts')) {
     const row = db.prepare('SELECT doc FROM workout_state WHERE id = 1').get() as
       | { doc: string }
       | undefined
-    add('Workout', row ? [{ doc: row.doc }] : [])
+    out.Workout = row ? [{ doc: row.doc }] : []
+  }
+  return out
+}
+
+// --- Export ---------------------------------------------------------------
+function sheetFrom(cols: readonly string[], rows: Row[]): XLSX.WorkSheet {
+  if (rows.length === 0) return XLSX.utils.aoa_to_sheet([cols as string[]])
+  return XLSX.utils.json_to_sheet(rows, { header: cols as string[] })
+}
+
+export function buildBackup(groups: BackupGroup[], format: BackupFormat = 'xlsx'): Buffer {
+  const tables = collect(groups, format === 'json')
+
+  if (format === 'json') {
+    // Ordered per COLS so the file reads in a sensible order, and so an empty
+    // table still documents its own shape via the key set.
+    const doc = {
+      format: JSON_FORMAT_ID,
+      version: JSON_VERSION,
+      exported_at: new Date().toISOString(),
+      photos_included: groups.includes('recipes'),
+      tables,
+    }
+    return Buffer.from(JSON.stringify(doc, null, 2), 'utf8')
   }
 
+  const wb = XLSX.utils.book_new()
+  for (const name of Object.keys(tables) as TableName[]) {
+    XLSX.utils.book_append_sheet(wb, sheetFrom(COLS[name], tables[name] ?? []), name)
+  }
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 }
 
-// --- Restore --------------------------------------------------------------
+// --- Read a backup file (either format) -----------------------------------
 const str = (v: unknown): string => (v == null ? '' : String(v))
 const numOrNull = (v: unknown): number | null =>
   v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v)
 const num = (v: unknown): number => numOrNull(v) ?? 0
 const nowStamp = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 
-// Groups actually present in an uploaded workbook (by marker sheet).
-export function groupsInWorkbook(buffer: Buffer): BackupGroup[] {
-  const wb = XLSX.read(buffer, { type: 'buffer' })
-  const names = new Set(wb.SheetNames)
-  return ALL_GROUPS.filter((g) => GROUP_SHEETS[g].some((s) => names.has(s)))
+// Sniff the format: a JSON backup starts with '{' (after any whitespace/BOM),
+// an .xlsx is a zip and starts with 'PK'. Cheaper and more reliable than
+// trusting the filename extension.
+export function detectFormat(buffer: Buffer): BackupFormat {
+  const head = buffer.subarray(0, 8).toString('utf8').replace(/^﻿/, '').trimStart()
+  return head.startsWith('{') ? 'json' : 'xlsx'
 }
 
-export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<BackupGroup, number> {
-  const wb = XLSX.read(buffer, { type: 'buffer' })
-  const present = new Set(groupsInWorkbook(buffer))
-  const groups = requested.filter((g) => present.has(g))
-  const rows = (name: string): Record<string, unknown>[] => {
-    const ws = wb.Sheets[name]
-    return ws ? (XLSX.utils.sheet_to_json(ws, { defval: null }) as Record<string, unknown>[]) : []
+// Parse a file of either format into the neutral table shape.
+function readTables(buffer: Buffer): Tables {
+  if (detectFormat(buffer) === 'json') {
+    const doc = JSON.parse(buffer.toString('utf8'))
+    if (!doc || typeof doc !== 'object' || doc.format !== JSON_FORMAT_ID) {
+      throw new Error("this JSON file isn't a JQTools backup")
+    }
+    const tables = doc.tables
+    if (!tables || typeof tables !== 'object') throw new Error('this backup has no tables in it')
+    const out: Tables = {}
+    for (const name of Object.keys(tables) as TableName[]) {
+      if (Array.isArray(tables[name])) out[name] = tables[name] as Row[]
+    }
+    return out
   }
+
+  const wb = XLSX.read(buffer, { type: 'buffer' })
+  const out: Tables = {}
+  for (const name of wb.SheetNames as TableName[]) {
+    const ws = wb.Sheets[name]
+    if (ws) out[name] = XLSX.utils.sheet_to_json(ws, { defval: null }) as Row[]
+  }
+  return out
+}
+
+// Groups actually present in an uploaded backup (by marker table).
+export function groupsInBackup(buffer: Buffer): BackupGroup[] {
+  const names = new Set(Object.keys(readTables(buffer)))
+  return ALL_GROUPS.filter((g) => GROUP_TABLES[g].some((t) => names.has(t)))
+}
+
+// --- Restore --------------------------------------------------------------
+export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<BackupGroup, number> {
+  const tables = readTables(buffer)
+  const names = new Set(Object.keys(tables))
+  const present = new Set(ALL_GROUPS.filter((g) => GROUP_TABLES[g].some((t) => names.has(t))))
+  const groups = requested.filter((g) => present.has(g))
+  const rows = (name: TableName): Row[] => tables[name] ?? []
   const counts: Record<BackupGroup, number> = {
     budgets: 0, planner: 0, properties: 0, recipes: 0, workouts: 0,
   }
@@ -286,18 +361,30 @@ export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<
     }
 
     if (groups.includes('recipes')) {
-      // Only text/macros are restored; existing photos on THIS machine (if any)
-      // are lost on replace, since the file never carried them.
+      // A JSON backup carries photos (image_b64) and restores them; an .xlsx
+      // never had them, so photos on THIS machine are lost on an xlsx replace.
       db.exec('DELETE FROM recipes')
       const ins = db.prepare(`
         INSERT INTO recipes
           (id, title, category, cook_time, protein, carbs, fats, calories,
-           instructions, description, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           instructions, description, image, image_mime, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       const RECIPE_CATS = ['breakfast', 'lunch', 'dinner', 'snack']
       for (const r of rows('Recipes')) {
         const cat = str(r.category)
+        // A corrupt/undecodable photo shouldn't sink the whole restore, drop
+        // just that image and keep the recipe's text.
+        let image: Uint8Array | null = null
+        const b64 = str(r.image_b64)
+        if (b64) {
+          try {
+            const buf = Buffer.from(b64, 'base64')
+            if (buf.length) image = new Uint8Array(buf)
+          } catch {
+            /* keep the recipe, drop the photo */
+          }
+        }
         ins.run(
           num(r.id) || null,
           str(r.title),
@@ -309,6 +396,8 @@ export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<
           num(r.calories),
           str(r.instructions),
           str(r.description),
+          image,
+          image ? str(r.image_mime) || 'image/jpeg' : null,
           str(r.created_at) || nowStamp(),
         )
         counts.recipes++
@@ -316,7 +405,7 @@ export function restoreBackup(buffer: Buffer, requested: BackupGroup[]): Record<
     }
 
     if (groups.includes('workouts')) {
-      // The document rides in a single 'doc' cell — parse it back and upsert the
+      // The document rides in a single 'doc' cell, parse it back and upsert the
       // one workout_state row. A malformed cell just leaves existing data alone.
       const docRow = rows('Workout')[0]
       const raw = docRow ? str(docRow.doc) : ''

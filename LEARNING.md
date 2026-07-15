@@ -415,6 +415,82 @@ so there's no flash). `src/components/ThemeToggle.tsx` (the toggle button).
 
 ---
 
+## 14. Two backup formats, and why only one can hold a photo
+
+The Backup window now offers **JSON** or **Excel**, and the difference teaches
+something real about file formats.
+
+**A spreadsheet is a grid of cells.** A cell holds a number or some text. There
+is nowhere in that grid to put a 2MB photograph. That's not a limitation we
+chose, it's what the format *is*. So the .xlsx backup was always going to leave
+your recipe photos behind.
+
+**A photo is bytes, and JSON is text.** So how does the photo get in? A trick
+called **base64**: it re-spells raw binary using only 64 plain characters
+(A-Z, a-z, 0-9, plus two more) that are safe to sit inside a text file. Your
+photo becomes a long boring string like `iVBORw0KGgoAAAANSUhEUg...`, JSON stores
+it happily, and on restore we spell it back into the original bytes. It really
+is the *same* photo, not a copy or a re-compression. The cost: base64 needs
+about **4 characters for every 3 bytes**, so the file grows by roughly a third.
+That's the whole trade: JSON is bigger, but it's complete.
+
+Which is why the app now nudges you toward JSON. `budget.db` was previously the
+only thing that held *everything*, and a raw database file is awkward to email
+or eyeball. JSON gets you the same completeness in a file you can open in
+Notepad.
+
+**The shared-shape idea (worth stealing).** Both formats carry the same tables
+with the same names, so the code gathers your data **once** into a neutral shape
+and only the last step differs: write a workbook, or write text. Restore works
+the same in reverse. That's why adding JSON didn't mean writing a second backup
+system, and why the tab-detection logic ("which tabs does this file contain?")
+didn't have to be written twice.
+
+**Sniffing beats trusting the name.** When you upload a backup, the app doesn't
+believe the `.json` on the end of the filename (you could rename anything). It
+peeks at the first couple of bytes: a JSON file starts with `{`, and an .xlsx is
+secretly a zip archive, which always starts with the letters `PK`. Content tells
+the truth; filenames are just a label.
+
+**See it in the code:** `server/backup.ts` (`collect` gathers once, `buildBackup`
+writes either format, `detectFormat` does the sniffing).
+`src/components/BackupRestore.tsx` (the format picker).
+
+---
+
+## 15. The bug where "Choose file" went white-on-white
+
+A small bug with a sharp lesson about how the dark-mode trick (section 13) can
+leak.
+
+Section 13's whole approach is: the app uses classes like `bg-slate-100`, and
+`src/index.css` re-colors them under `.dark`. That works because the class you
+write and the class the CSS re-colors are **the same name**.
+
+The "Choose file" button broke that assumption twice over:
+
+1. The style was written as `file:bg-slate-100`. That `file:` prefix doesn't
+   produce a `.bg-slate-100` rule at all. It produces a rule aimed at
+   `::file-selector-button`, which is the browser's *own* little button living
+   inside the file input. Different selector, so the `.dark .bg-slate-100`
+   re-color never touched it. The button stayed light.
+2. Meanwhile `color-scheme: dark` (the "bonus line" from section 13) was doing
+   its job: it told the browser to render its built-in controls dark, which
+   turned that button's default text **white**.
+
+White text, light button. Invisible. Two features that are each correct, both
+half-applying to the same element. The fix states both the background *and* the
+text color for that button explicitly under `.dark`, instead of assuming the
+generic remap reached it.
+
+**The transferable lesson:** a clever blanket rule ("re-color these class names
+everywhere") is only blanket over things it can actually see. Anything that
+renders through a *different* name, especially browser-built-in bits, sits
+outside the blanket and has to be handled by hand. When something looks wrong
+only in dark mode, ask: is this element painted by my class, or by the browser?
+
+---
+
 ## Glossary (quick reference)
 
 - **Frontend / client / "web"** — the part in the browser you see and click. React. `src/`.

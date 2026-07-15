@@ -9,7 +9,7 @@ import { matchCategory } from './rules.ts'
 import { seedIfEmpty } from './seed.ts'
 import { seedRecipesIfEmpty } from './recipe-seed.ts'
 import { seedWorkoutIfEmpty } from './workout-seed.ts'
-import { buildBackup, restoreBackup, parseGroups } from './backup.ts'
+import { buildBackup, restoreBackup, parseGroups, parseFormat } from './backup.ts'
 import type {
   Budget,
   BudgetConfig,
@@ -40,7 +40,16 @@ app.use(cors())
 app.use(express.json())
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } })
 
-const PORT = 3001
+// Backup restores get their own, much larger cap: a JSON backup embeds every
+// recipe photo as base64 (which inflates them by about a third), so a whole-app
+// backup can dwarf the 25MB that's plenty for a bank statement.
+const uploadBackup = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+})
+
+// 3001 is what the web app's dev proxy expects; PORT only moves for tests.
+const PORT = Number(process.env.PORT) || 3001
 
 // --- helpers --------------------------------------------------------------
 interface BudgetRow {
@@ -248,7 +257,7 @@ app.post('/api/budgets/:id/import', upload.single('file'), (req, res) => {
   }
 
   // One account label for the whole file (e.g. "Chase Card"), applied to every
-  // row imported. Optional — blank leaves the rows' source empty.
+  // row imported. Optional, blank leaves the rows' source empty.
   const source = (req.body.source ? String(req.body.source).trim() : '') || null
 
   const { rows } = parseFile(req.file.originalname, req.file.buffer)
@@ -307,7 +316,7 @@ app.delete('/api/budgets/:id/transactions', (req, res) => {
   res.json({ ok: true })
 })
 
-// Earliest / latest transaction dates (ignores filters) — powers the "latest
+// Earliest / latest transaction dates (ignores filters), powers the "latest
 // transaction" hint next to the filters so you know where to start a date range.
 app.get('/api/budgets/:id/date-range', (req, res) => {
   const row = db
@@ -437,7 +446,7 @@ app.post('/api/budgets/:id/transactions/bulk-delete', (req, res) => {
 
 // Apply YOUR saved rules (config.rules) to transactions. Only fills BLANK
 // categories by default so your manual tags always win; pass { overwrite: true }
-// to re-tag everything. Nothing is learned or guessed — it only uses your rules.
+// to re-tag everything. Nothing is learned or guessed, it only uses your rules.
 app.post('/api/budgets/:id/autocategorize', (req, res) => {
   const b = getBudget(Number(req.params.id))
   if (!b) return res.status(404).json({ error: 'budget not found' })
@@ -668,7 +677,7 @@ app.post('/api/properties/:id/entries/bulk-delete', (req, res) => {
   res.json({ deleted })
 })
 
-// Shared master list of property categories — feeds every property's dropdowns.
+// Shared master list of property categories, feeds every property's dropdowns.
 const DEFAULT_PROPERTY_CATEGORIES = [
   'Rent', 'Late fee', 'Pet rent', 'Other income',
   'Mortgage', 'Property taxes', 'Insurance', 'Repairs', 'Maintenance', 'Management',
@@ -761,14 +770,14 @@ app.post('/api/properties/:id/leases', (req, res) => {
     `INSERT INTO property_entries (property_id, entry_date, kind, category, amount, note, paid, lease_id)
      VALUES (?, ?, 'income', ?, ?, ?, 0, ?)`,
   )
-  for (const m of months) insert.run(propertyId, `${m}-01`, 'Rent', rent, tenant ? `Rent — ${tenant}` : null, leaseId)
+  for (const m of months) insert.run(propertyId, `${m}-01`, 'Rent', rent, tenant ? `Rent, ${tenant}` : null, leaseId)
 
   // One-time move-in money, dated at the start month, also unpaid until collected.
   let generated = months.length
   const dep = Math.abs(Number(deposit) || 0)
   const pre = Math.abs(Number(prepaid) || 0)
   if (dep > 0) {
-    insert.run(propertyId, `${months[0]}-01`, 'Security deposit', dep, tenant ? `Deposit — ${tenant}` : 'refundable', leaseId)
+    insert.run(propertyId, `${months[0]}-01`, 'Security deposit', dep, tenant ? `Deposit, ${tenant}` : 'refundable', leaseId)
     generated++
   }
   if (pre > 0) {
@@ -1092,7 +1101,7 @@ app.get('/api/workout', (_req, res) => {
 
 app.put('/api/workout', (req, res) => {
   const doc = req.body as WorkoutDoc
-  // Light shape check — enough to reject obviously malformed writes without
+  // Light shape check, enough to reject obviously malformed writes without
   // trying to validate the whole nested tree.
   if (
     !doc ||
@@ -1112,22 +1121,27 @@ app.put('/api/workout', (req, res) => {
 })
 
 // --- Backup / Restore ------------------------------------------------------
-// Download selected tabs as one .xlsx workbook (?groups=budgets,planner,...).
+// Download selected tabs as one file (?groups=budgets,planner,...&format=json).
+// Defaults to .xlsx; ?format=json returns the photo-carrying JSON backup.
 app.get('/api/export', (req, res) => {
   const groups = parseGroups(req.query.groups)
-  const buf = buildBackup(groups)
+  const format = parseFormat(req.query.format)
+  const buf = buildBackup(groups, format)
   const stamp = new Date().toISOString().slice(0, 10)
   res.setHeader(
     'Content-Type',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    format === 'json'
+      ? 'application/json'
+      : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   )
-  res.setHeader('Content-Disposition', `attachment; filename="jqtools-backup-${stamp}.xlsx"`)
+  res.setHeader('Content-Disposition', `attachment; filename="jqtools-backup-${stamp}.${format}"`)
   res.send(buf)
 })
 
-// Restore a backup file: REPLACES all data in whichever selected tabs are
-// present in the file. Tabs not selected (or not in the file) are untouched.
-app.post('/api/import-backup', upload.single('file'), (req, res) => {
+// Restore a backup file of either format (the format is sniffed from the file's
+// own bytes): REPLACES all data in whichever selected tabs are present in the
+// file. Tabs not selected (or not in the file) are untouched.
+app.post('/api/import-backup', uploadBackup.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'no file uploaded' })
   const groups = parseGroups((req.body as { groups?: string }).groups)
   try {

@@ -162,9 +162,12 @@ export const api = {
     ),
 
   // --- Backup / Restore ---
-  // A direct download URL for the selected tabs (used by an <a download>).
-  exportUrl: (groups: string[]) =>
-    `/api/export${groups.length ? `?groups=${encodeURIComponent(groups.join(','))}` : ''}`,
+  // A direct download URL for the selected tabs, in either format.
+  exportUrl: (groups: string[], format: 'xlsx' | 'json' = 'xlsx') => {
+    const p = new URLSearchParams({ format })
+    if (groups.length) p.set('groups', groups.join(','))
+    return `/api/export?${p}`
+  },
 
   importBackup: (file: File, groups: string[]) => {
     const fd = new FormData()

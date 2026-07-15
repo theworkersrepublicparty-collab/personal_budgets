@@ -1,5 +1,5 @@
 // Starter recipes, seeded on first run so the Food Recipes tab isn't empty.
-// This file is tracked in git (unlike budget.db) — it's the one part of your
+// This file is tracked in git (unlike budget.db), it's the one part of your
 // recipe data that's meant to travel with the app itself. Feel free to edit
 // or delete the starters once seeded; they're normal rows after that.
 import { db } from './db.ts'
@@ -60,7 +60,7 @@ const STARTERS: StarterRecipe[] = [
     carbs: 73,
     fats: 27,
     calories: 765,
-    description: 'Not made yet — on the list for Saturday meal prep.',
+    description: 'Not made yet, on the list for Saturday meal prep.',
     instructions:
       '1. Blend the egg whites and oats until smooth. Add water if needed for a thin batter consistency.\n' +
       '2. Heat a frying pan over medium-high with cooking spray. Add 2-3 tbsp of batter and fry until small ' +
@@ -78,7 +78,7 @@ const STARTERS: StarterRecipe[] = [
     carbs: 75,
     fats: 26,
     calories: 765,
-    description: 'Korean/Japanese-inspired bowl — current meal-prep favorite.',
+    description: 'Korean/Japanese-inspired bowl, current meal-prep favorite.',
     instructions:
       '1. Cook the rice: rinse before cooking, then cook in lightly salted water per package directions.\n' +
       '2. Prep tofu & onion: peel and slice the onion, drain and cube the tofu (~½ x ½ inch), marinate the ' +
@@ -110,7 +110,7 @@ const STARTERS: StarterRecipe[] = [
     carbs: 29,
     fats: 9,
     calories: 288,
-    description: 'Serves 1. Make it the night before and it turns into a pudding — still delicious.',
+    description: 'Serves 1. Make it the night before and it turns into a pudding, still delicious.',
     instructions:
       '1. Rinse the berries and cut the strawberries into smaller pieces. Chop the almonds.\n' +
       '2. Add the skyr to a bowl and top with the strawberries, blueberries, and almonds.\n' +
@@ -128,7 +128,7 @@ const STARTERS: StarterRecipe[] = [
     carbs: 28,
     fats: 11,
     calories: 290,
-    description: 'Ready in 5 minutes — blend and go.',
+    description: 'Ready in 5 minutes, blend and go.',
     instructions:
       '1. Peel the banana.\n' +
       '2. Add the banana, protein powder, almonds, cocoa powder, and some water to a blender.\n' +

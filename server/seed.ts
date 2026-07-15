@@ -1,5 +1,5 @@
 // Creates the two starter budget instances on first run so the app isn't empty.
-// They are just normal instances of the generic engine — you can rename or
+// They are just normal instances of the generic engine, you can rename or
 // delete them, and create more via the "New budget" flow.
 import { db } from './db.ts'
 import type { BudgetConfig } from '../shared/types.ts'
