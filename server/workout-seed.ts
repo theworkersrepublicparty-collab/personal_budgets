@@ -390,6 +390,33 @@ function tempoFullBodyWorkouts(): Workout[] {
   ]
 }
 
+// Anime Workouts
+function onePunchManWorkouts(): Workout[] {
+  return [
+    {
+      id: 'one-punch-man', name: 'One-Punch Man Challenge',
+      equipment: ['Worksheet and Pen', 'Water and Towel', 'Road or Treadmill'],
+      weightSuggestions: '',
+      notes: "Saitama's daily challenge: 100 push-ups, 100 sit-ups, 100 squats, and a 10 km (6.2 mi) run — every single day.",
+      weeks: ['Daily'],
+      groups: [
+        { type: 'Single Set', exercises: [
+          { name: 'Push-Ups', cells: cellsFor('100') },
+        ] },
+        { type: 'Single Set', exercises: [
+          { name: 'Sit-Ups', cells: cellsFor('100') },
+        ] },
+        { type: 'Single Set', exercises: [
+          { name: 'Squats', cells: cellsFor('100') },
+        ] },
+        { type: 'Single Set', exercises: [
+          { name: 'Run', cellLabels: ['Time', 'Distance'], cells: [{ reps: '', weight: '10 km (6.2 mi)' }] },
+        ] },
+      ],
+    },
+  ]
+}
+
 function starterDoc(): WorkoutDoc {
   return {
     // Left unset on purpose: these are per-person, and null renders as "—"
@@ -406,6 +433,12 @@ function starterDoc(): WorkoutDoc {
       },
       { id: 'cardio', name: 'Cardio', programs: [] },
       { id: 'calisthenics', name: 'Calisthenics', programs: [] },
+      {
+        id: 'anime-workouts', name: 'Anime Workouts',
+        programs: [
+          { id: 'one-punch-man', name: 'One-Punch Man', workouts: onePunchManWorkouts() },
+        ],
+      },
     ],
     activeCategory: 'lifting',
     assignments: {},

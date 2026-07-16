@@ -788,6 +788,75 @@ app.post('/api/properties/:id/leases', (req, res) => {
   res.json({ lease: db.prepare('SELECT * FROM leases WHERE id = ?').get(leaseId), generated })
 })
 
+// Update a lease's terms. Reconciles its *unpaid* generated rent rows against
+// the new range/amount (added, removed, or re-priced) but never touches rows
+// already marked paid — that's real recorded history, not part of the plan.
+app.patch('/api/properties/:id/leases/:lid', (req, res) => {
+  const propertyId = Number(req.params.id)
+  const lid = Number(req.params.lid)
+  const existing = db
+    .prepare('SELECT * FROM leases WHERE id = ? AND property_id = ?')
+    .get(lid, propertyId) as Lease | undefined
+  if (!existing) return res.status(404).json({ error: 'lease not found' })
+
+  const { tenant, start_month, end_month, monthly_rent, note } = req.body as {
+    tenant?: string
+    start_month?: string
+    end_month?: string
+    monthly_rent?: number
+    note?: string | null
+  }
+  const nextTenant = tenant !== undefined ? tenant.trim() : existing.tenant
+  const nextStart = start_month ?? existing.start_month
+  const nextEnd = end_month ?? existing.end_month
+  const nextRent = monthly_rent !== undefined ? Math.abs(Number(monthly_rent) || 0) : existing.monthly_rent
+  const nextNote = note !== undefined ? note : existing.note
+
+  const months = monthRange(nextStart, nextEnd)
+  if (months.length === 0) {
+    return res.status(400).json({ error: 'valid start_month and end_month (YYYY-MM) are required' })
+  }
+
+  db.prepare(
+    'UPDATE leases SET tenant = ?, start_month = ?, end_month = ?, monthly_rent = ?, note = ? WHERE id = ?',
+  ).run(nextTenant, months[0], months[months.length - 1], nextRent, nextNote, lid)
+
+  const rentRows = db
+    .prepare("SELECT * FROM property_entries WHERE lease_id = ? AND category = 'Rent'")
+    .all(lid) as unknown as PropertyEntry[]
+  const monthSet = new Set(months)
+  const noteText = nextTenant ? `Rent, ${nextTenant}` : null
+
+  // Drop unpaid rows for months no longer in the range.
+  for (const row of rentRows) {
+    const m = row.entry_date.slice(0, 7)
+    if (!row.paid && !monthSet.has(m)) {
+      db.prepare('DELETE FROM property_entries WHERE id = ?').run(row.id)
+    }
+  }
+  // Re-price/re-label unpaid rows still in range.
+  const stillPresent = new Set(rentRows.filter((r) => monthSet.has(r.entry_date.slice(0, 7))).map((r) => r.entry_date.slice(0, 7)))
+  db.prepare("UPDATE property_entries SET amount = ?, note = ? WHERE lease_id = ? AND category = 'Rent' AND paid = 0").run(
+    nextRent,
+    noteText,
+    lid,
+  )
+  // Add rows for newly-included months.
+  const insert = db.prepare(
+    `INSERT INTO property_entries (property_id, entry_date, kind, category, amount, note, paid, lease_id)
+     VALUES (?, ?, 'income', 'Rent', ?, ?, 0, ?)`,
+  )
+  let added = 0
+  for (const m of months) {
+    if (!stillPresent.has(m)) {
+      insert.run(propertyId, `${m}-01`, nextRent, noteText, lid)
+      added++
+    }
+  }
+
+  res.json({ lease: db.prepare('SELECT * FROM leases WHERE id = ?').get(lid), added })
+})
+
 // Delete a lease and the rent rows it generated.
 app.delete('/api/properties/:id/leases/:lid', (req, res) => {
   const lid = Number(req.params.lid)

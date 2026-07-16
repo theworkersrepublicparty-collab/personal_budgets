@@ -488,6 +488,10 @@ function LeaseSection({
   const [f, setF] = useState({ tenant: '', start_month: '', end_month: '', monthly_rent: '', deposit: '', prepaid: '' })
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }))
 
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [ef, setEf] = useState({ tenant: '', start_month: '', end_month: '', monthly_rent: '' })
+  const setE = (k: string, v: string) => setEf((p) => ({ ...p, [k]: v }))
+
   async function create(e: React.FormEvent) {
     e.preventDefault()
     if (!f.start_month || !f.end_month) return
@@ -502,6 +506,24 @@ function LeaseSection({
     setF({ tenant: '', start_month: '', end_month: '', monthly_rent: '', deposit: '', prepaid: '' })
     setAdding(false)
     alert(`Lease created — generated ${res.generated} rows (rent + any deposit/upfront), unpaid until you check them off.`)
+    onChanged()
+  }
+
+  function startEdit(l: Lease) {
+    setEditingId(l.id)
+    setEf({ tenant: l.tenant ?? '', start_month: l.start_month, end_month: l.end_month, monthly_rent: String(l.monthly_rent) })
+  }
+
+  async function saveEdit(e: React.FormEvent, lid: number) {
+    e.preventDefault()
+    if (!ef.start_month || !ef.end_month) return
+    await api.updateLease(propertyId, lid, {
+      tenant: ef.tenant.trim(),
+      start_month: ef.start_month,
+      end_month: ef.end_month,
+      monthly_rent: parseFloat(ef.monthly_rent) || 0,
+    })
+    setEditingId(null)
     onChanged()
   }
 
@@ -557,15 +579,53 @@ function LeaseSection({
         <p className="text-sm text-slate-400">No leases yet. Add one to auto-generate monthly rent rows.</p>
       ) : (
         <div className="space-y-1">
-          {leases.map((l) => (
-            <div key={l.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-              <span>
-                <b>{money(l.monthly_rent)}/mo</b> · {l.start_month} → {l.end_month}
-                {l.tenant && <span className="text-slate-500"> · {l.tenant}</span>}
-              </span>
-              <button onClick={() => onDelete(l.id)} className="text-xs text-slate-400 hover:text-money-out">Delete</button>
-            </div>
-          ))}
+          {leases.map((l) =>
+            editingId === l.id ? (
+              <form
+                key={l.id}
+                onSubmit={(e) => saveEdit(e, l.id)}
+                className="grid items-end gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-5"
+              >
+                <label className="flex flex-col">
+                  <span className="mb-1 text-[11px] font-medium text-slate-500">Tenant (optional)</span>
+                  <input value={ef.tenant} onChange={(e) => setE('tenant', e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                </label>
+                <label className="flex flex-col">
+                  <span className="mb-1 text-[11px] font-medium text-slate-500">From month</span>
+                  <input type="month" value={ef.start_month} onChange={(e) => setE('start_month', e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                </label>
+                <label className="flex flex-col">
+                  <span className="mb-1 text-[11px] font-medium text-slate-500">To month</span>
+                  <input type="month" value={ef.end_month} onChange={(e) => setE('end_month', e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                </label>
+                <label className="flex flex-col">
+                  <span className="mb-1 text-[11px] font-medium text-slate-500">Rent / month</span>
+                  <div className="flex items-center rounded-lg border border-slate-300 px-2">
+                    <span className="text-sm text-slate-400">$</span>
+                    <input type="number" step="0.01" value={ef.monthly_rent} onChange={(e) => setE('monthly_rent', e.target.value)} className="w-full bg-transparent px-1 py-1.5 text-sm outline-none" />
+                  </div>
+                </label>
+                <div className="flex gap-2">
+                  <button className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700">Save</button>
+                  <button type="button" onClick={() => setEditingId(null)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">Cancel</button>
+                </div>
+                <p className="text-xs text-slate-400 sm:col-span-5">
+                  Only unpaid rent rows are added, re-priced, or removed to match the new terms — paid rows are left alone.
+                </p>
+              </form>
+            ) : (
+              <div key={l.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <span>
+                  <b>{money(l.monthly_rent)}/mo</b> · {l.start_month} → {l.end_month}
+                  {l.tenant && <span className="text-slate-500"> · {l.tenant}</span>}
+                </span>
+                <span className="flex gap-3">
+                  <button onClick={() => startEdit(l)} className="text-xs text-slate-400 hover:text-ink">Edit</button>
+                  <button onClick={() => onDelete(l.id)} className="text-xs text-slate-400 hover:text-money-out">Delete</button>
+                </span>
+              </div>
+            ),
+          )}
         </div>
       )}
     </div>

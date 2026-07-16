@@ -35,6 +35,12 @@ export default function Properties() {
     load()
   }
 
+  async function remove(id: number, name: string) {
+    if (!confirm(`Delete "${name}" and all its ledger entries, fixed costs, and leases? This cannot be undone.`)) return
+    await api.deleteProperty(id)
+    load()
+  }
+
   const portfolio = aggregatePortfolio(rows)
 
   return (
@@ -94,25 +100,33 @@ export default function Properties() {
           {/* Property cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map(({ property, stats }) => (
-              <Link
+              <div
                 key={property.id}
-                to={`/properties/${property.id}`}
-                className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm"
+                className="group relative rounded-xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm"
               >
-                <h2 className="text-lg font-semibold">{property.name}</h2>
-                {property.address && <p className="text-sm text-slate-400">{property.address}</p>}
-                <div className="mt-3 flex items-baseline justify-between">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Monthly cash flow</span>
-                  <span className={'text-lg font-bold ' + (stats.avgMonthlyCashFlow >= 0 ? 'text-money-in' : 'text-money-out')}>
-                    {money(stats.avgMonthlyCashFlow)}
-                  </span>
-                </div>
-                <div className="mt-1 flex justify-between text-xs text-slate-400">
-                  <span>Cap {pct(stats.capRate)}</span>
-                  <span>CoC {pct(stats.cashOnCash)}</span>
-                  <span>{stats.monthsTracked} mo tracked</span>
-                </div>
-              </Link>
+                <Link to={`/properties/${property.id}`} className="block">
+                  <h2 className="text-lg font-semibold">{property.name}</h2>
+                  {property.address && <p className="text-sm text-slate-400">{property.address}</p>}
+                  <div className="mt-3 flex items-baseline justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Monthly cash flow</span>
+                    <span className={'text-lg font-bold ' + (stats.avgMonthlyCashFlow >= 0 ? 'text-money-in' : 'text-money-out')}>
+                      {money(stats.avgMonthlyCashFlow)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex justify-between text-xs text-slate-400">
+                    <span>Cap {pct(stats.capRate)}</span>
+                    <span>CoC {pct(stats.cashOnCash)}</span>
+                    <span>{stats.monthsTracked} mo tracked</span>
+                  </div>
+                </Link>
+                <button
+                  onClick={() => remove(property.id, property.name)}
+                  className="absolute right-3 top-3 hidden text-xs text-slate-300 hover:text-money-out group-hover:block"
+                  title="Delete property"
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
         </>

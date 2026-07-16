@@ -254,6 +254,17 @@ export const api = {
       body: JSON.stringify(data),
     }).then(json<{ lease: Lease; generated: number }>),
 
+  updateLease: (
+    id: number,
+    lid: number,
+    patch: Partial<Pick<LeaseInput, 'tenant' | 'start_month' | 'end_month' | 'monthly_rent' | 'note'>>,
+  ) =>
+    fetch(`/api/properties/${id}/leases/${lid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(json<{ lease: Lease; added: number }>),
+
   deleteLease: (id: number, lid: number) =>
     fetch(`/api/properties/${id}/leases/${lid}`, { method: 'DELETE' }).then(json<{ ok: boolean }>),
 

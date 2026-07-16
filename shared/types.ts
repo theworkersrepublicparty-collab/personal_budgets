@@ -189,6 +189,12 @@ export interface WorkoutCell {
 export interface WorkoutExercise {
   name: string
   cells: WorkoutCell[]
+  // Labels for a cell's two fields, e.g. ['R', 'W'] for reps/weight or
+  // ['Time', 'Distance'] for cardio. Defaults to ['R', 'W'] when unset — the
+  // underlying cell still stores { reps, weight }, this only relabels what
+  // those two slots mean for this specific exercise row, independent of
+  // every other row in the same workout.
+  cellLabels?: [string, string]
 }
 
 // A set group (e.g. "Super Set") holding one or more exercises.

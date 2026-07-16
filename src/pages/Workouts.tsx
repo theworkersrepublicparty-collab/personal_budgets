@@ -119,6 +119,11 @@ function lastNumericWeight(cells: WorkoutCell[]): number | null {
   }
   return null
 }
+const REPS_WEIGHT: [string, string] = ['R', 'W']
+const TIME_DISTANCE: [string, string] = ['Time', 'Distance']
+function otherCellLabels(cur: [string, string] | undefined): [string, string] {
+  return cur?.[0] === 'Time' ? REPS_WEIGHT : TIME_DISTANCE
+}
 function findWorkout(d: WorkoutDoc, catId: string, progId: string, wId: string): Workout | undefined {
   return d.categories
     .find((c) => c.id === catId)
@@ -898,6 +903,23 @@ function CategorySection() {
   function setActive(id: string) {
     mutate((d) => { d.activeCategory = id })
   }
+  function renameCategory() {
+    if (!active) return
+    const name = prompt('Rename category:', active.name)
+    if (!name || name === active.name) return
+    mutate((d) => {
+      const c = d.categories.find((x) => x.id === active.id)
+      if (c) c.name = name
+    })
+  }
+  function deleteCategory() {
+    if (!active) return
+    if (!confirm(`Delete category "${active.name}" and all its programs?`)) return
+    mutate((d) => {
+      d.categories = d.categories.filter((c) => c.id !== active.id)
+      d.activeCategory = d.categories[0]?.id ?? ''
+    })
+  }
   function addProgram() {
     if (!active) return
     const name = prompt('New program name (e.g. Body Beast, 5x5, Couch to 5K):')
@@ -936,6 +958,12 @@ function CategorySection() {
           </button>
         ))}
         <button onClick={addCategory} className={BTN_SM}>+ Add Category</button>
+        {active && (
+          <>
+            <button onClick={renameCategory} className={BTN_SM} title={`Rename "${active.name}"`}>Rename</button>
+            <button onClick={deleteCategory} className={BTN_DANGER_SM} title={`Delete "${active.name}"`}>Delete</button>
+          </>
+        )}
       </div>
 
       {active && (
@@ -1445,6 +1473,9 @@ function Worksheet({
 
   const pastFlat = compareLog ? flattenExercises(compareLog.groups) : null
 
+  function toggleExCellLabels(gi: number, ei: number) {
+    edit((t) => { t.groups[gi].exercises[ei].cellLabels = otherCellLabels(t.groups[gi].exercises[ei].cellLabels) })
+  }
   function setCell(gi: number, ei: number, ci: number, field: 'reps' | 'weight', value: string) {
     edit((t) => { t.groups[gi].exercises[ei].cells[ci][field] = value })
   }
@@ -1521,6 +1552,7 @@ function Worksheet({
               g.exercises.map((ex, ei) => {
                 const pastEx = pastFlat ? pastFlat.find((p) => p.name === ex.name) || pastFlat[flatIdx] : null
                 flatIdx++
+                const [repLabel, weightLabel] = ex.cellLabels ?? REPS_WEIGHT
                 return (
                   <tr key={`${gi}-${ei}`}>
                     <td className={`whitespace-nowrap border border-slate-200 px-2 py-1 align-middle ${TYPE_COL_CLS}`}>
@@ -1538,20 +1570,27 @@ function Worksheet({
                         onCommit={(v) => setExName(gi, ei, v)}
                         className="w-full min-w-[9rem] rounded bg-transparent px-1 py-0.5 text-xs focus:bg-slate-100 focus:outline-none"
                       />
+                      <button
+                        onClick={() => toggleExCellLabels(gi, ei)}
+                        className="mt-0.5 block text-[10px] text-slate-400 hover:text-ink"
+                        title="Switch this row between Reps/Weight and Time/Distance"
+                      >
+                        {repLabel}/{weightLabel} ⇄
+                      </button>
                     </td>
                     {ex.cells.map((c, ci) => {
                       const pastCell = pastEx ? pastEx.cells[ci] : null
                       return (
                         <td key={ci} className={`border border-slate-200 px-2 py-1 align-top ${SET_COL_CLS}`}>
                           <div className="flex items-center gap-1">
-                            <span className="text-[11px] text-slate-400">R</span>
+                            <span className="text-[11px] text-slate-400">{repLabel}</span>
                             <EditableInput value={c.reps} onCommit={(v) => setCell(gi, ei, ci, 'reps', v)} className={REP_INPUT_CLS} />
-                            <span className="text-[11px] text-slate-400">W</span>
+                            <span className="text-[11px] text-slate-400">{weightLabel}</span>
                             <EditableInput value={c.weight} onCommit={(v) => setCell(gi, ei, ci, 'weight', v)} className={W_INPUT_CLS} />
                           </div>
                           {pastCell && (
                             <div className="mt-0.5 text-[10.5px] text-emerald-600">
-                              {compareLog!.date}: {pastCell.reps || '-'} reps @ {pastCell.weight || '-'}
+                              {compareLog!.date}: {pastCell.reps || '-'} {repLabel} @ {pastCell.weight || '-'} {weightLabel}
                             </div>
                           )}
                         </td>
@@ -1867,22 +1906,25 @@ function LogTable({ log }: { log: WorkoutLog }) {
         </thead>
         <tbody>
           {log.groups.map((g, gi) =>
-            g.exercises.map((ex, ei) => (
+            g.exercises.map((ex, ei) => {
+              const [repLabel, weightLabel] = ex.cellLabels ?? REPS_WEIGHT
+              return (
               <tr key={`${gi}-${ei}`}>
                 <td className={`whitespace-nowrap border border-slate-200 px-2 py-1 font-semibold text-emerald-600 ${TYPE_COL_CLS}`}>{ei === 0 ? g.type : ''}</td>
                 <td className="border border-slate-200 px-2 py-1">{ex.name}</td>
                 {ex.cells.map((c, ci) => (
                   <td key={ci} className={`border border-slate-200 px-2 py-1 ${SET_COL_CLS}`}>
                     <div className="flex items-center gap-1">
-                      <span className="text-[11px] text-slate-400">R</span>
+                      <span className="text-[11px] text-slate-400">{repLabel}</span>
                       <EditableInput value={c.reps} onCommit={(v) => setCell(gi, ei, ci, 'reps', v)} className={REP_INPUT_CLS} />
-                      <span className="text-[11px] text-slate-400">W</span>
+                      <span className="text-[11px] text-slate-400">{weightLabel}</span>
                       <EditableInput value={c.weight} onCommit={(v) => setCell(gi, ei, ci, 'weight', v)} className={W_INPUT_CLS} />
                     </div>
                   </td>
                 ))}
               </tr>
-            )),
+              )
+            }),
           )}
         </tbody>
       </table>

@@ -41,6 +41,13 @@ export default function Home() {
     refresh()
   }
 
+  async function rename(id: number, label: string) {
+    const name = prompt('Rename budget:', label)
+    if (!name || !name.trim() || name.trim() === label) return
+    await api.updateBudget(id, { name: name.trim() })
+    refresh()
+  }
+
   return (
     <div>
       <div className="mb-5 flex items-center justify-between">
@@ -112,13 +119,22 @@ export default function Home() {
                   <h2 className="text-lg font-semibold">{b.name}</h2>
                   <p className="mt-1 text-sm text-slate-400">{meta.blurb}</p>
                 </Link>
-                <button
-                  onClick={() => remove(b.id, b.name)}
-                  className="absolute right-3 top-3 hidden text-xs text-slate-300 hover:text-money-out group-hover:block"
-                  title="Delete budget"
-                >
-                  ✕
-                </button>
+                <div className="absolute right-3 top-3 hidden items-center gap-2 group-hover:flex">
+                  <button
+                    onClick={() => rename(b.id, b.name)}
+                    className="text-xs text-slate-300 hover:text-slate-600"
+                    title="Rename budget"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={() => remove(b.id, b.name)}
+                    className="text-xs text-slate-300 hover:text-money-out"
+                    title="Delete budget"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             )
           })}

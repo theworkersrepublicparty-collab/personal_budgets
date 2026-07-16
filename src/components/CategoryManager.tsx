@@ -1,8 +1,9 @@
 import { useState } from 'react'
 
 // Edit the budget's own category list. This list feeds the row dropdowns,
-// the pie chart, and the category filter. Removing a category here does NOT
-// touch transactions already tagged with it — it just stops offering it.
+// the pie chart, and the category filter. Removing or renaming a category
+// here does NOT touch transactions already tagged with it — it just changes
+// what gets offered going forward.
 export default function CategoryManager({
   categories,
   onCancel,
@@ -29,6 +30,15 @@ export default function CategoryManager({
 
   function remove(name: string) {
     setList(list.filter((c) => c !== name))
+  }
+
+  function rename(name: string) {
+    const next = prompt('Rename category:', name)
+    if (!next) return
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === name) return
+    if (list.some((c) => c !== name && c.toLowerCase() === trimmed.toLowerCase())) return
+    setList(list.map((c) => (c === name ? trimmed : c)))
   }
 
   async function save() {
@@ -83,6 +93,14 @@ export default function CategoryManager({
               className="flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-sm"
             >
               {c}
+              <button
+                type="button"
+                onClick={() => rename(c)}
+                aria-label={`Rename ${c}`}
+                className="flex h-5 w-5 items-center justify-center rounded-full text-slate-400 hover:bg-slate-300 hover:text-slate-700"
+              >
+                ✎
+              </button>
               <button
                 type="button"
                 onClick={() => remove(c)}
