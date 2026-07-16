@@ -90,8 +90,9 @@ run). Two ways to keep it safe or move it:
 1. **In-app (easiest):** click **💾 Backup** in the top bar → choose the tabs →
    choose a format → download. To move to another computer, open the app there
    and use the **Restore** side of the same window.
-2. **Copy the file:** copy `budget.db` somewhere safe, or into the project
-   folder on another PC. This is *everything*, photos included.
+2. **Copy the file:** stop the app, then copy `budget.db` somewhere safe, or
+   into the project folder on another PC. This is *everything*, photos included.
+   Stopping first is what makes it safe — see [Starting over](#starting-over-or-moving-your-data-aside).
 
 ### Which backup format?
 
@@ -113,8 +114,24 @@ are lost.
 Restoring **replaces** every tab the file contains. Tabs that aren't in the file
 are left alone, so a recipes-only backup can't touch your budgets.
 
-To **start over**, delete `budget.db` and run again, it recreates the starter
-content.
+### Starting over (or moving your data aside)
+
+Stop the app first, then delete — or move — **all three** of these together, and
+run again to recreate the starter content:
+
+| File | What it does |
+|---|---|
+| `budget.db` | The database itself: every budget, transaction, recipe and workout you own. |
+| `budget.db-wal` | Write-ahead log — recent changes, not yet folded back into `budget.db`. |
+| `budget.db-shm` | Shared-memory index SQLite uses to coordinate readers and writers of the `-wal`. |
+
+You may only see `budget.db`. The other two appear while the app is running and
+are normally cleaned up when it shuts down cleanly, so don't be surprised either
+way — just take whichever of the three are there.
+
+Treat them as one unit. Deleting `budget.db` on its own can leave a `-wal`
+behind that belongs to a database that no longer exists, and the app will then
+start against a mismatched pair.
 
 ## How to import a statement
 
