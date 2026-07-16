@@ -491,6 +491,87 @@ only in dark mode, ask: is this element painted by my class, or by the browser?
 
 ---
 
+## 16. The fingerprint that stops duplicate imports (and the bug where a restore disarmed it)
+
+You import March's statement. Next month you import again and accidentally grab
+an overlapping date range. Why doesn't March show up twice?
+
+**Every imported row gets a fingerprint.** As a row comes in from a CSV, the app
+squashes three things — its date, its amount, its description — into one short
+code called a **hash**. A hash is the same every time for the same input, and
+different for anything else. Same row in, same fingerprint out.
+
+The database then keeps a **unique index** on that fingerprint: a standing rule
+saying "no two rows in this budget may share one." The import uses `INSERT OR
+IGNORE`, so a row whose fingerprint is already on file gets skipped silently.
+That's the entire duplicate guard. Notice it never compares rows to each other —
+it just lets the database refuse a collision. That's cheap and it scales.
+
+**Hand-typed rows opt out, on purpose.** If you type "Coffee $4" twice in one
+day, you probably meant it. So manual entries get a deliberately *random*
+fingerprint instead of a content-based one, and the rule can never fire on them.
+
+**Where it went wrong.** The backup file listed the columns a human would want to
+read — date, amount, description — and left the fingerprint out, because a sha1
+code is noise in a spreadsheet. Reasonable so far. But the fingerprint column
+can't be left empty, so on restore the code *invented* one, built from the row's
+position in the file.
+
+Your rows all came back correct, so the restore looked perfect. But each one now
+carried a position-stamp where a content-fingerprint belonged. The next import
+computed real fingerprints, matched nothing, and inserted all 18 rows a second
+time — possibly weeks after the restore that actually caused it.
+
+**The lesson worth keeping:** a backup isn't only the data you can see. The
+bookkeeping columns are load-bearing too, and dropping one turned a loud,
+immediate failure into a silent, delayed one. The tell is that the restore itself
+never misbehaved — only the *next* thing did. When a bug seems to have no cause,
+look for what quietly stopped being true earlier.
+
+**See it in the code:** `server/ingest.ts` (builds the content fingerprint),
+`server/db.ts` (`idx_txn_dedupe`, the unique rule), `server/index.ts` (the random
+one for manual rows), `server/backup.ts` (the restore that invents one).
+
+---
+
+## 17. Bundle size, and why Excel costs a phone more than a desktop
+
+Everything the frontend uses gets packed into one big file the browser downloads
+before the app can run. That file is the **bundle**. Yours:
+
+```
+dist/assets/index-*.js   1,150.08 kB │ gzip: 336.00 kB
+```
+
+That's why the build prints a warning about chunks over 500 kB.
+
+A good chunk of that is **Excel support**. Reading and writing .xlsx is genuinely
+hard (it's a zip full of XML), so it takes a big library — and the app imports it
+in the browser, to peek inside an uploaded backup and see which tabs it holds.
+JSON, by contrast, costs *nothing*: `JSON.parse` is built into the language.
+Same feature, wildly different price.
+
+On a desktop this is invisible — fast connection, loads once. On a phone it's app
+size and memory, on hardware that cares. It gets worse in a phone build: with no
+server, the backup logic moves on-device too, so Excel support ends up carried in
+two places.
+
+**The fix isn't to drop the feature — it's to defer it.** A normal `import` at
+the top of a file says "I need this before anything runs." A **dynamic import**
+(`await import('xlsx')`) says "fetch this only if we actually get here." Since
+almost nobody opens a spreadsheet on their phone, that one change means the phone
+never pays for Excel unless someone uses it, while the desktop keeps it. This is
+called **code-splitting**, and it's exactly what that build warning is asking for.
+
+**The general idea:** the cost of a feature isn't only the code you wrote for it.
+It's every library that feature drags along, paid by every user — including the
+ones who never touch it.
+
+**See it in the code:** `src/components/BackupRestore.tsx` (imports the Excel
+library up front), `server/backup.ts` and `server/parse.ts` (the server's copies).
+
+---
+
 ## Glossary (quick reference)
 
 - **Frontend / client / "web"** — the part in the browser you see and click. React. `src/`.
@@ -520,3 +601,8 @@ only in dark mode, ask: is this element painted by my class, or by the browser?
 - **Dark mode via `.dark` class** — one class on `<html>` flips the whole app's colors; the header toggle adds/removes it, and the choice is remembered in localStorage.
 - **git** — version control for *code* (shared). Your *data* (`budget.db`) is deliberately kept out of it.
 - **Browser driver (Playwright/Puppeteer)** — a robot browser for auto-testing the UI. Not installed here.
+- **Hash** — a short code computed from some input. Same input always gives the same code, so it works as a fingerprint. Here: date + amount + description → one code per transaction.
+- **Unique index** — a database rule that refuses two rows sharing the same value. What actually blocks a duplicate import; the app never compares rows itself.
+- **`INSERT OR IGNORE`** — "add this row, but if it would break a unique rule, skip it quietly instead of erroring."
+- **Bundle** — the single packed file of frontend code the browser downloads before the app can run. Bigger bundle = slower first load, and it matters far more on a phone.
+- **Code-splitting / lazy-loading** — breaking the bundle up so a heavy piece is only fetched if it's actually used. Done with a dynamic `await import('...')` instead of a top-of-file `import`.
