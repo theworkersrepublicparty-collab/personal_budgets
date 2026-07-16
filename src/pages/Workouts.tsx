@@ -877,8 +877,13 @@ function CategorySection() {
   // multi-select (batch move) state, scoped to one program at a time
   const [selectProgId, setSelectProgId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  // collapse state
-  const [collapsedProgs, setCollapsedProgs] = useState<Set<string>>(new Set())
+  // collapse state. Presentation only: open the last program and start the rest
+  // collapsed, so the page doesn't land as a wall of expanded cards. Local UI
+  // state, never written back to the doc. slice(0, -1) is a no-op for a
+  // category with 0 or 1 programs, so those stay open.
+  const [collapsedProgs, setCollapsedProgs] = useState<Set<string>>(
+    () => new Set((active?.programs ?? []).slice(0, -1).map((p) => p.id)),
+  )
   const [expandedWorkouts, setExpandedWorkouts] = useState<Set<string>>(new Set())
 
   function addCategory() {
@@ -1401,6 +1406,22 @@ function MovePanel({
 }
 
 /* ---------------- Worksheet ---------------- */
+// Shared sizing for the worksheet grid. Both the editable Worksheet and the
+// logged LogTable render the same Set Type / Exercise / one-column-per-set
+// table, so the sizing lives here rather than being duplicated in each.
+//
+// shrink-0: the inputs are flex children, so without it they compress below
+// their set width once a workout has more than a few set columns.
+const REP_INPUT_CLS =
+  'w-11 shrink-0 rounded bg-transparent px-1 py-0.5 text-xs text-slate-500 focus:bg-slate-100 focus:outline-none'
+const W_INPUT_CLS =
+  'w-14 shrink-0 rounded bg-transparent px-1 py-0.5 text-xs focus:bg-slate-100 focus:outline-none'
+// Width floors, so a column is the same width whether a workout has 3 set
+// columns or 7. Once the columns outgrow the container the wrapper scrolls
+// sideways instead of squeezing the cells.
+const TYPE_COL_CLS = 'min-w-[7.5rem]'
+const SET_COL_CLS = 'min-w-[9.5rem]'
+
 function Worksheet({
   catId,
   progId,
@@ -1474,9 +1495,6 @@ function Worksheet({
     edit((t) => { t.equipment = v.split(',').map((s) => s.trim()).filter(Boolean) })
   }
 
-  const repInputCls = 'w-11 rounded bg-transparent px-1 py-0.5 text-xs text-slate-500 focus:bg-slate-100 focus:outline-none'
-  const wInputCls = 'w-14 rounded bg-transparent px-1 py-0.5 text-xs focus:bg-slate-100 focus:outline-none'
-
   let flatIdx = 0
 
   return (
@@ -1485,10 +1503,10 @@ function Worksheet({
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr>
-              <th className="border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Set Type</th>
+              <th className={`border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${TYPE_COL_CLS}`}>Set Type</th>
               <th className="border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Exercise</th>
               {w.weeks.map((wk, i) => (
-                <th key={i} className="border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <th key={i} className={`border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${SET_COL_CLS}`}>
                   <span className="flex items-center gap-1">
                     {wk}
                     <button onClick={() => delColumn(i)} className="text-slate-400 hover:text-money-out" title="Remove set column">✕</button>
@@ -1505,7 +1523,7 @@ function Worksheet({
                 flatIdx++
                 return (
                   <tr key={`${gi}-${ei}`}>
-                    <td className="whitespace-nowrap border border-slate-200 px-2 py-1 align-middle">
+                    <td className={`whitespace-nowrap border border-slate-200 px-2 py-1 align-middle ${TYPE_COL_CLS}`}>
                       {ei === 0 && (
                         <EditableInput
                           value={g.type}
@@ -1524,12 +1542,12 @@ function Worksheet({
                     {ex.cells.map((c, ci) => {
                       const pastCell = pastEx ? pastEx.cells[ci] : null
                       return (
-                        <td key={ci} className="border border-slate-200 px-2 py-1 align-top">
+                        <td key={ci} className={`border border-slate-200 px-2 py-1 align-top ${SET_COL_CLS}`}>
                           <div className="flex items-center gap-1">
                             <span className="text-[11px] text-slate-400">R</span>
-                            <EditableInput value={c.reps} onCommit={(v) => setCell(gi, ei, ci, 'reps', v)} className={repInputCls} />
+                            <EditableInput value={c.reps} onCommit={(v) => setCell(gi, ei, ci, 'reps', v)} className={REP_INPUT_CLS} />
                             <span className="text-[11px] text-slate-400">W</span>
-                            <EditableInput value={c.weight} onCommit={(v) => setCell(gi, ei, ci, 'weight', v)} className={wInputCls} />
+                            <EditableInput value={c.weight} onCommit={(v) => setCell(gi, ei, ci, 'weight', v)} className={W_INPUT_CLS} />
                           </div>
                           {pastCell && (
                             <div className="mt-0.5 text-[10.5px] text-emerald-600">
@@ -1835,18 +1853,15 @@ function LogTable({ log }: { log: WorkoutLog }) {
       if (t) t.groups[gi].exercises[ei].cells[ci][field] = value
     })
   }
-  const repInputCls = 'w-11 rounded bg-transparent px-1 py-0.5 text-xs text-slate-500 focus:bg-slate-100 focus:outline-none'
-  const wInputCls = 'w-14 rounded bg-transparent px-1 py-0.5 text-xs focus:bg-slate-100 focus:outline-none'
-
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr>
-            <th className="border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Set Type</th>
+            <th className={`border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${TYPE_COL_CLS}`}>Set Type</th>
             <th className="border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">Exercise</th>
             {log.weeks.map((wk, i) => (
-              <th key={i} className="border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">{wk}</th>
+              <th key={i} className={`border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${SET_COL_CLS}`}>{wk}</th>
             ))}
           </tr>
         </thead>
@@ -1854,15 +1869,15 @@ function LogTable({ log }: { log: WorkoutLog }) {
           {log.groups.map((g, gi) =>
             g.exercises.map((ex, ei) => (
               <tr key={`${gi}-${ei}`}>
-                <td className="whitespace-nowrap border border-slate-200 px-2 py-1 font-semibold text-emerald-600">{ei === 0 ? g.type : ''}</td>
+                <td className={`whitespace-nowrap border border-slate-200 px-2 py-1 font-semibold text-emerald-600 ${TYPE_COL_CLS}`}>{ei === 0 ? g.type : ''}</td>
                 <td className="border border-slate-200 px-2 py-1">{ex.name}</td>
                 {ex.cells.map((c, ci) => (
-                  <td key={ci} className="border border-slate-200 px-2 py-1">
+                  <td key={ci} className={`border border-slate-200 px-2 py-1 ${SET_COL_CLS}`}>
                     <div className="flex items-center gap-1">
                       <span className="text-[11px] text-slate-400">R</span>
-                      <EditableInput value={c.reps} onCommit={(v) => setCell(gi, ei, ci, 'reps', v)} className={repInputCls} />
+                      <EditableInput value={c.reps} onCommit={(v) => setCell(gi, ei, ci, 'reps', v)} className={REP_INPUT_CLS} />
                       <span className="text-[11px] text-slate-400">W</span>
-                      <EditableInput value={c.weight} onCommit={(v) => setCell(gi, ei, ci, 'weight', v)} className={wInputCls} />
+                      <EditableInput value={c.weight} onCommit={(v) => setCell(gi, ei, ci, 'weight', v)} className={W_INPUT_CLS} />
                     </div>
                   </td>
                 ))}
